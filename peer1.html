@@ -46,6 +46,52 @@
             color: white;
             cursor: pointer;
         }
+
+        /* Modal styles */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            color: white;
+            text-align: center;
+            flex-direction: column;
+        }
+        .spinner {
+            position: relative;
+            width: 50px;
+            height: 50px;
+        }
+        .spinner div {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background-color: #fff;
+            border-radius: 50%;
+            animation: spinner 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+        }
+        .spinner div:nth-child(1) { top: 0; left: 50%; transform: translate(-50%, -50%); animation-delay: -1.1s; }
+        .spinner div:nth-child(2) { top: 14%; left: 86%; transform: translate(-50%, -50%); animation-delay: -1s; }
+        .spinner div:nth-child(3) { top: 50%; left: 100%; transform: translate(-50%, -50%); animation-delay: -0.9s; }
+        .spinner div:nth-child(4) { top: 86%; left: 86%; transform: translate(-50%, -50%); animation-delay: -0.8s; }
+        .spinner div:nth-child(5) { top: 100%; left: 50%; transform: translate(-50%, -50%); animation-delay: -0.7s; }
+        .spinner div:nth-child(6) { top: 86%; left: 14%; transform: translate(-50%, -50%); animation-delay: -0.6s; }
+        .spinner div:nth-child(7) { top: 50%; left: 0; transform: translate(-50%, -50%); animation-delay: -0.5s; }
+        .spinner div:nth-child(8) { top: 14%; left: 14%; transform: translate(-50%, -50%); animation-delay: -0.4s; }
+        @keyframes spinner {
+            0% { transform: scale(1); opacity: 1; }
+            100% { transform: scale(0); opacity: 0; }
+        }
+        .modal p {
+            margin-top: 20px;
+            font-size: 18px;
+        }
     </style>
     <script>
         let peerConnection;
@@ -56,7 +102,7 @@
             dataChannel = peerConnection.createDataChannel("messaging");
 
             dataChannel.onopen = () => {
-                document.getElementById("status").innerText = "Connected! Start messaging.";
+                console.log("Data channel open.");
             };
             dataChannel.onmessage = (event) => {
                 displayMessage(event.data, "peer");
@@ -73,10 +119,19 @@
         }
 
         async function connect() {
+            // Show the modal
+            const modal = document.getElementById("modal");
+            modal.style.display = "flex";
+
             const answer = document.getElementById("answer").value.trim();
             if (answer) {
                 await peerConnection.setRemoteDescription(JSON.parse(answer));
-                document.getElementById("status").innerText = "Connected! Start messaging.";
+
+                // Simulate connection delay with setTimeout
+                setTimeout(() => {
+                    modal.style.display = "none"; // Hide the modal
+                    document.getElementById("status").innerText = "Connected! Start messaging."; // Update status only after modal closes
+                }, 5000); // Close modal after 5 seconds
             }
         }
 
@@ -112,6 +167,21 @@
     <div>
         <input type="text" id="messageInput" placeholder="Type a message">
         <button onclick="sendMessage()">Send</button>
+    </div>
+
+    <!-- Modal -->
+    <div id="modal" class="modal">
+        <div class="spinner">
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+        </div>
+        <p>Trying to connect...</p>
     </div>
 </body>
 </html>
