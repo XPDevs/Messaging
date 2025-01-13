@@ -46,7 +46,11 @@
             color: white;
             cursor: pointer;
         }
+        #qrcode {
+            margin: 10px 0;
+        }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
     <script>
         let peerConnection;
         let dataChannel;
@@ -66,7 +70,9 @@
 
             peerConnection.onicecandidate = (event) => {
                 if (!event.candidate) {
-                    document.getElementById("answer").value = JSON.stringify(peerConnection.localDescription);
+                    const answer = JSON.stringify(peerConnection.localDescription);
+                    document.getElementById("answer").value = answer;
+                    generateQRCode(answer);
                 }
             };
 
@@ -94,6 +100,14 @@
             messageItem.textContent = message;
             messages.appendChild(messageItem);
         }
+
+        function generateQRCode(text) {
+            const qrCodeElement = document.getElementById("qrcode");
+            qrCodeElement.innerHTML = ''; // Clear any existing QR code
+            QRCode.toCanvas(qrCodeElement, text, { width: 200 }, (error) => {
+                if (error) console.error(error);
+            });
+        }
     </script>
 </head>
 <body>
@@ -102,6 +116,7 @@
         <textarea id="offer" placeholder="Paste the offer from Peer 1 here"></textarea>
         <button onclick="connect()">Generate Answer</button>
         <textarea id="answer" placeholder="Copy this and send to Peer 1" readonly></textarea>
+        <div id="qrcode"></div>
     </div>
     <div id="chat">
         <ul id="messages"></ul>
