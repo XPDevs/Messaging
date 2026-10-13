@@ -1,0 +1,1459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ntfy Chat</title>
+<style>
+  /* ===== 1.1 Color Palette ===== */
+  :root{
+    --bg:#ffffff;
+    --text:#1f1f1f;
+    --sidebar:#f0f4f9;
+    --content-bg:#ffffff;
+    --input-bg:#f0f4f9;
+    --border:#dee2e6;
+    --primary:#1a73e8;
+    --user-msg-bg:#f0f4f9;
+    --active-item:#e2e7ed;
+    --modal-bg:#ffffff;
+  }
+  body.dark{
+    --bg:#131314;
+    --text:#e3e3e3;
+    --sidebar:#1e1f20;
+    --content-bg:#131314;
+    --input-bg:#1e1f20;
+    --border:#444746;
+    --primary:#1a73e8;
+    --user-msg-bg:#282a2c;
+    --active-item:#333537;
+    --modal-bg:#1e1f20;
+  }
+
+  /* ===== Reset / base ===== */
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    font-family:"Inter","Segoe UI",Roboto,sans-serif;
+    font-size:16px;line-height:1.6;
+    background:var(--bg);color:var(--text);
+    overflow:hidden;
+  }
+  button{font-family:inherit;font-size:inherit}
+  button:not(:disabled){cursor:pointer}
+  svg{display:block}
+
+  /* ===== 3. Layout: full app shell ===== */
+  .app-container{display:flex;height:100vh;width:100%;overflow:hidden;background:var(--bg)}
+
+  /* ===== 2.7 Sidebar ===== */
+  .xpdevs-sidebar{
+    width:280px;flex-shrink:0;
+    background:var(--sidebar);
+    display:flex;flex-direction:column;
+    border-right:1px solid var(--border);
+    transition:width .3s cubic-bezier(0.4,0,0.2,1);
+  }
+  .xpdevs-sidebar.collapsed{width:68px}
+  .sidebar-header{padding:16px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .xpdevs-logo{
+    display:flex;align-items:center;gap:10px;
+    font-weight:700;font-size:1.1rem;color:var(--text);
+    text-decoration:none;white-space:nowrap;overflow:hidden;
+  }
+  .logo-icon{width:32px;height:32px;border-radius:8px;object-fit:contain;flex-shrink:0}
+  .sidebar-controls{display:flex;align-items:center;gap:4px}
+  .xpdevs-sidebar.collapsed .logo-text,
+  .xpdevs-sidebar.collapsed .search-container,
+  .xpdevs-sidebar.collapsed .item-main,
+  .xpdevs-sidebar.collapsed .item-side,
+  .xpdevs-sidebar.collapsed .new-item-label,
+  .xpdevs-sidebar.collapsed .dots-btn{display:none}
+  .xpdevs-sidebar.collapsed .sidebar-header{flex-direction:column;justify-content:center}
+  .xpdevs-sidebar.collapsed .xpdevs-logo{justify-content:center}
+  .xpdevs-sidebar.collapsed .sidebar-footer{padding:16px 0}
+  .xpdevs-sidebar.collapsed .new-item-btn{width:40px;height:40px;padding:0;border-radius:50%;justify-content:center}
+
+  /* ===== 2.2 Search input ===== */
+  .search-container{padding:0 16px 12px 16px}
+  .search-input-wrapper{position:relative}
+  .search-input{
+    width:100%;padding:8px 32px 8px 12px;
+    border:1px solid var(--border);border-radius:8px;
+    background:var(--input-bg);color:var(--text);
+    font-size:0.9rem;outline:none;transition:0.2s ease;
+  }
+  .search-input:focus{border-color:var(--primary)}
+  .search-icon-overlay{
+    position:absolute;right:10px;top:50%;transform:translateY(-50%);
+    opacity:.6;pointer-events:none;display:flex;
+  }
+
+  /* ===== 2.4 List items ===== */
+  .list{flex:1;overflow-y:auto;list-style:none;padding:0 12px;margin:0}
+  .list-item{
+    display:flex;align-items:center;gap:10px;
+    padding:10px 16px;border-radius:24px;margin-bottom:4px;
+    position:relative;cursor:pointer;
+    transition:background 0.2s ease;
+  }
+  .list-item:hover{background:rgba(0,0,0,0.05)}
+  body.dark .list-item:hover{background:rgba(255,255,255,0.05)}
+  .list-item.active{background:var(--active-item)}
+  .item-avatar{
+    width:40px;height:40px;border-radius:50%;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(135deg,#007bff,#0056b3);
+    color:#fff;font-weight:700;font-size:14px;
+  }
+  .item-main{flex:1;min-width:0;display:flex;flex-direction:column}
+  .item-title{font-weight:500;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .item-preview{font-size:12px;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .item-side{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0}
+  .item-time{font-size:11px;color:#aaa}
+  .unread-badge{
+    background:var(--primary);color:#fff;font-size:11px;font-weight:700;
+    min-width:18px;height:18px;padding:0 5px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .dots-btn{
+    opacity:0;width:32px;height:32px;border-radius:50%;
+    border:none;background:transparent;color:var(--text);flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    transition:0.2s ease;
+  }
+  .list-item:hover .dots-btn{opacity:1}
+  .dots-btn:hover{background:var(--active-item)}
+
+  /* ===== 2.5 Dropdown menu ===== */
+  .dropdown{
+    position:absolute;right:12px;top:45px;
+    background:var(--modal-bg);border:1px solid var(--border);
+    border-radius:16px;box-shadow:0 10px 25px rgba(0,0,0,0.2);
+    padding:6px;min-width:150px;z-index:1000;display:none;
+  }
+  .dropdown.show{display:block}
+  .dropdown button{
+    background:transparent;border:none;padding:12px 16px;width:100%;
+    text-align:left;border-radius:10px;font-size:14px;color:var(--text);
+    transition:0.2s ease;
+  }
+  .dropdown button:hover{background:var(--active-item)}
+  .dropdown button.delete-opt{color:#ff4d4d}
+
+  /* ===== 2.7 Sidebar footer / new item button ===== */
+  .sidebar-footer{
+    display:flex;flex-direction:row;align-items:center;justify-content:center;
+    padding:12px 16px;margin-top:auto;
+  }
+  .new-item-btn{
+    display:flex;align-items:center;gap:8px;
+    background:var(--input-bg);border:1px solid var(--border);
+    border-radius:25px;padding:10px 18px;font-weight:500;color:var(--text);
+    transition:0.2s ease;
+  }
+  .new-item-btn:hover{background:var(--active-item)}
+
+  /* ===== 3. Main content layout ===== */
+  .content-main{
+    flex:1;display:flex;flex-direction:column;min-width:0;
+    background:var(--content-bg);position:relative;
+  }
+  .content-header{
+    width:100%;height:64px;flex-shrink:0;
+    display:flex;align-items:center;gap:8px;padding:0 24px;
+    background:var(--content-bg);border-bottom:1px solid var(--border);
+    z-index:10;
+  }
+  .content-title{margin:0;font-size:1.2rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .header-code{font-size:12px;color:#aaa;margin-left:8px;white-space:nowrap}
+  .content-header-actions{margin-left:auto;display:flex;align-items:center;gap:8px}
+
+  /* ===== Content box ===== */
+  .content-box{
+    width:100%;max-width:800px;flex:1;
+    padding:24px;overflow-y:auto;
+    display:flex;flex-direction:column;margin:0 auto;
+  }
+  .content-box.drag-over{outline:2px dashed var(--primary);outline-offset:-8px;border-radius:16px}
+
+  /* ===== Messages ===== */
+  .message{
+    max-width:85%;margin-bottom:32px;
+    display:flex;flex-direction:column;position:relative;
+    animation:messagePop 0.2s ease;
+  }
+  .message.in{align-self:flex-start}
+  .message.out{align-self:flex-end;align-items:flex-end}
+  .bubble{
+    padding:10px 16px;border-radius:22px;
+    font-size:16px;line-height:1.6;word-break:break-word;white-space:pre-wrap;
+  }
+  .message.in .bubble{background:var(--input-bg)}
+  .message.out .bubble{background:var(--user-msg-bg)}
+  .message-meta{display:flex;align-items:center;gap:6px;font-size:11px;color:#aaa;margin-top:6px}
+  .lock-badge{font-size:11px}
+  .message-actions{
+    position:absolute;top:50%;transform:translateY(-50%);
+    display:flex;gap:4px;opacity:0;transition:0.2s ease;
+  }
+  .message.in .message-actions{right:-8px;transform:translate(100%,-50%)}
+  .message.out .message-actions{left:-8px;transform:translate(-100%,-50%)}
+  .message:hover .message-actions,.message.latest .message-actions{opacity:1}
+  .action-btn{
+    padding:6px;background:var(--input-bg);border:1px solid var(--border);
+    border-radius:8px;opacity:.7;display:flex;color:var(--text);
+    transition:0.2s ease;
+  }
+  .action-btn:hover{opacity:1;background:var(--active-item);transform:scale(1.1)}
+  body.dark .action-btn:hover{background:rgba(255,255,255,0.1)}
+  .day-separator{
+    align-self:center;font-size:12px;color:#aaa;background:var(--input-bg);
+    padding:4px 12px;border-radius:20px;margin:8px 0 20px;
+  }
+  .greeting{
+    display:block;font-size:1.8rem;font-weight:500;opacity:.7;
+    margin:auto;text-align:center;
+  }
+  .greeting-sub{display:block;font-size:16px;font-weight:400;margin-top:12px}
+  .greeting-sub b{color:var(--primary)}
+
+  /* ===== Images ===== */
+  .image-bubble{padding:4px}
+  .chat-image{max-width:280px;max-height:280px;border-radius:18px;display:block;cursor:pointer;object-fit:cover}
+  .image-caption{padding:6px 8px 2px 8px;font-size:14px}
+
+  /* ===== Vault Lock card ===== */
+  .vault{
+    display:flex;align-items:center;gap:12px;
+    background:var(--input-bg);border:1px dashed var(--border);
+    border-radius:22px;padding:14px 16px;max-width:340px;
+  }
+  .vault-icon{font-size:22px;flex-shrink:0}
+  .vault-body{display:flex;flex-direction:column;min-width:0}
+  .vault-title{font-weight:600;font-size:14px}
+  .vault-sub{font-size:12px;color:#aaa}
+  .vault-unlock{
+    margin-left:auto;flex-shrink:0;background:var(--primary);color:#fff;
+    border:none;border-radius:20px;padding:8px 16px;font-weight:500;
+    transition:0.2s ease;
+  }
+  .vault-unlock:hover{filter:brightness(0.9)}
+
+  /* ===== 2.2 Input area ===== */
+  .input-container{width:100%;max-width:800px;margin:0 auto;padding:0 20px 24px 20px}
+  .composer-tools{display:flex;align-items:center;gap:8px;margin-bottom:8px;min-height:28px}
+  .tool-btn{
+    background:transparent;border:none;padding:6px;border-radius:6px;
+    opacity:.7;color:var(--text);display:flex;align-items:center;justify-content:center;
+    transition:0.2s ease;
+  }
+  .tool-btn:hover{background:rgba(128,128,128,0.1);opacity:1}
+  .tool-btn.active{opacity:1;color:var(--primary);background:rgba(26,115,232,0.15)}
+  .tool-hint{font-size:12px;color:#aaa}
+  .input-area{
+    display:flex;align-items:flex-end;gap:8px;
+    background:var(--input-bg);border:1px solid transparent;
+    border-radius:32px;padding:6px 12px 6px 20px;
+    transition:background 0.2s ease;
+  }
+  .input-area:focus-within{background:var(--bg);border:1px solid var(--border)}
+  .input-area textarea{
+    flex:1;padding:12px 0;border:none;background:transparent;color:var(--text);
+    font-size:16px;line-height:1.6;font-family:inherit;outline:none;
+    resize:none;max-height:120px;
+  }
+  .send-btn{
+    width:40px;height:40px;border-radius:50%;border:none;
+    background:var(--primary);color:#fff;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    transition:0.2s ease;
+  }
+  .send-btn:hover{opacity:.9}
+  .content-warning{font-size:12px;text-align:center;margin-top:12px;color:#70757a}
+
+  /* ===== 2.1 Buttons ===== */
+  .icon-btn{
+    background:transparent;padding:6px;border:none;border-radius:6px;
+    opacity:.7;color:var(--text);display:flex;align-items:center;justify-content:center;
+    transition:0.2s ease;
+  }
+  .icon-btn:hover{background:rgba(128,128,128,0.1);opacity:1}
+  .round-btn{
+    background:transparent;width:42px;height:42px;border-radius:50%;
+    border:none;color:var(--text);flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    transition:0.2s ease;
+  }
+  .round-btn:hover{background:var(--active-item)}
+  .help-icon{
+    width:18px;height:18px;border-radius:50%;
+    background:rgba(26,115,232,0.15);color:var(--primary);
+    font-size:11px;font-weight:bold;border:none;
+    display:flex;align-items:center;justify-content:center;
+    transition:0.2s ease;
+  }
+  .help-icon:hover{background:var(--primary);color:#fff;transform:scale(1.1)}
+
+  /* ===== 2.3 Toggle switch ===== */
+  .toggle{position:relative;display:inline-block;width:48px;height:24px;flex-shrink:0}
+  .toggle input{opacity:0;width:0;height:0}
+  .slider{position:absolute;cursor:pointer;inset:0;background-color:#ccc;border-radius:24px;transition:.3s}
+  .slider:before{position:absolute;content:"";height:18px;width:18px;left:3px;bottom:3px;background-color:white;border-radius:50%;transition:.3s}
+  .toggle input:checked + .slider{background-color:var(--primary)}
+  .toggle input:checked + .slider:before{transform:translateX(24px)}
+
+  /* ===== 2.6 Cards & Modals ===== */
+  .modal{
+    position:fixed;inset:0;background:rgba(0,0,0,0.4);backdrop-filter:blur(4px);
+    z-index:10000;display:none;align-items:center;justify-content:center;padding:16px;
+  }
+  .modal.show{display:flex}
+  .modal-content{
+    background:var(--modal-bg);padding:30px;border-radius:28px;
+    min-width:320px;max-width:440px;width:100%;
+    box-shadow:0 8px 30px rgba(0,0,0,0.3);animation:messagePop 0.2s ease;
+  }
+  .modal-content h3{margin:0 0 8px;font-size:1.5rem;font-weight:700}
+  .modal-content p{color:#70757a;font-size:14px;margin:0 0 16px}
+  .modal-actions{margin-top:20px;display:flex;justify-content:flex-end;gap:12px}
+  .modal-actions button{
+    padding:10px 20px;border-radius:20px;font-weight:500;border:none;
+    background:var(--primary);color:#fff;transition:0.2s ease;
+  }
+  .modal-actions button.cancel{background:var(--input-bg);color:var(--text);border:1px solid var(--border)}
+  .modal-actions button:hover{filter:brightness(0.9)}
+
+  /* Settings panel */
+  .settings-list{display:flex;flex-direction:column;gap:16px}
+  .field{display:flex;flex-direction:column;gap:8px}
+  .field > label{font-size:12px;font-weight:600;color:#70757a;text-transform:uppercase;letter-spacing:.05em}
+  .field-row{flex-direction:row;align-items:center;justify-content:space-between}
+  .field input{
+    background:var(--input-bg);border:1px solid var(--border);border-radius:10px;
+    padding:12px;color:var(--text);font-size:16px;outline:none;width:100%;
+    transition:0.2s ease;
+  }
+  .field input:focus{border-color:var(--primary)}
+  .settings-btn{
+    padding:12px 20px;border-radius:20px;font-weight:500;width:100%;
+    color:#fff;border:none;background:var(--primary);transition:0.2s ease;
+  }
+  .settings-btn:hover{filter:brightness(0.9)}
+  .settings-btn.export{background:#28a645}
+  .settings-btn.delete{background:#dc3545}
+  .settings-btn.danger{background:#ff4d4d}
+
+  /* ===== 2.6 Help overlay ===== */
+  .help-overlay{
+    position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);
+    z-index:10001;display:none;align-items:center;justify-content:center;padding:16px;
+  }
+  .help-overlay.show{display:flex}
+  .help-overlay-content{
+    background:var(--modal-bg);padding:30px;border-radius:20px;
+    max-width:420px;width:90%;box-shadow:0 8px 30px rgba(0,0,0,0.3);text-align:center;
+  }
+  .help-overlay-content h3{margin:0 0 15px 0;color:var(--primary);font-size:1.3rem}
+  .help-overlay-content p{margin:0 0 14px 0;line-height:1.6;opacity:.9;text-align:left}
+  .help-overlay-close{
+    background:var(--primary);color:#fff;border:none;
+    padding:10px 30px;border-radius:20px;font-weight:500;transition:0.2s ease;
+    margin-top:6px;
+  }
+  .help-overlay-close:hover{filter:brightness(0.9)}
+
+  /* ===== 2.8 Spinner ===== */
+  .spinner{width:32px;height:32px;overflow:visible}
+  .spinner circle{fill:none;stroke:currentColor;stroke-width:6px;stroke-linecap:round}
+  .spinner-sm{width:20px;height:20px}
+  .spinner-primary{color:var(--primary)}
+
+  /* Status indicator */
+  .status{display:flex;align-items:center;gap:6px;font-size:12px;color:#aaa}
+  .dot{width:8px;height:8px;border-radius:50%;background:#ccc;display:inline-block}
+  .dot.on{background:#28a645}
+  .dot.err{background:#ff4d4d}
+
+  /* ===== Lightbox ===== */
+  .lightbox{
+    position:fixed;inset:0;background:rgba(0,0,0,0.85);
+    z-index:10001;display:none;flex-direction:column;
+    align-items:center;justify-content:center;padding:24px;gap:16px;
+  }
+  .lightbox.show{display:flex}
+  .lightbox img{max-width:90vw;max-height:78vh;border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,0.3)}
+  .lightbox-bar{display:flex;gap:12px}
+  .lightbox-bar button{
+    padding:10px 20px;border-radius:20px;border:none;font-weight:500;
+    background:var(--primary);color:#fff;transition:0.2s ease;
+  }
+  .lightbox-bar button.ghost{background:rgba(255,255,255,0.15)}
+  .lightbox-bar button:hover{filter:brightness(0.9)}
+
+  /* Toast */
+  .toast{
+    position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+    background:var(--modal-bg);border:1px solid var(--border);
+    box-shadow:0 8px 30px rgba(0,0,0,0.3);
+    padding:12px 20px;border-radius:20px;font-size:14px;
+    z-index:10002;display:none;transition:0.2s ease;max-width:90vw;text-align:center;
+  }
+
+  @keyframes messagePop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  /* ===== Responsive: 768px ===== */
+  .mobile-only{display:none !important}
+  @media (max-width:768px){
+    .mobile-only{display:flex !important}
+    .xpdevs-sidebar{
+      position:fixed;left:0;top:0;bottom:0;z-index:1000;
+      transform:translateX(-100%);
+      box-shadow:2px 0 10px rgba(0,0,0,0.2);
+      transition:transform .3s ease;
+    }
+    .xpdevs-sidebar.open{transform:translateX(0)}
+    .content-header{padding:0 16px}
+    .content-box{padding:16px}
+    .input-container{padding:0 16px 24px 16px}
+    .input-area{
+      border-radius:40px;padding:14px 12px 14px 22px;
+      box-shadow:0 2px 10px rgba(0,0,0,0.05);
+    }
+    .input-area:focus-within{box-shadow:0 4px 15px rgba(0,0,0,0.1)}
+    .message{max-width:90%}
+    .message-actions{position:static;transform:none;margin-top:6px;opacity:1}
+  }
+</style>
+</head>
+<body class="dark">
+<div class="app-container">
+
+  <!-- Sidebar -->
+  <aside class="xpdevs-sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <a class="xpdevs-logo" href="#" onclick="return false">
+        <img src="https://xpdevs.github.io/logo/XPDevs.png" class="logo-icon" alt="XPDevs">
+        <span class="logo-text">ntfy Chat</span>
+      </a>
+      <div class="sidebar-controls">
+        <button class="round-btn" id="sidebarToggle" title="Collapse sidebar" aria-label="Collapse sidebar">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="search-container">
+      <div class="search-input-wrapper">
+        <input class="search-input" id="searchInput" type="text" placeholder="Search messages...">
+        <span class="search-icon-overlay">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        </span>
+      </div>
+    </div>
+
+    <ul class="list" id="chatList"></ul>
+
+    <div class="sidebar-footer">
+      <button class="new-item-btn" id="newChatBtn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        <span class="new-item-label">New chat</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <main class="content-main">
+    <header class="content-header">
+      <button class="round-btn mobile-only" id="menuBtn" title="Menu" aria-label="Menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
+      <h1 class="content-title" id="chatTitle">My channel</h1>
+      <span class="header-code" id="chatCode"></span>
+      <div class="content-header-actions">
+        <span class="status" title="Connection status">
+          <svg class="spinner spinner-sm spinner-primary" id="statusSpinner" viewBox="0 0 100 100" style="display:none">
+            <circle cx="50%" cy="50%" r="50%">
+              <animateTransform attributeName="transform" type="rotate" values="-90;810" keyTimes="0;1" dur="2s" repeatCount="indefinite"/>
+              <animate attributeName="stroke-dashoffset" values="0%;0%;-157.080%" calcMode="spline" keySplines="0.61, 1, 0.88, 1; 0.12, 0, 0.39, 0" keyTimes="0;0.5;1" dur="2s" repeatCount="indefinite"/>
+              <animate attributeName="stroke-dasharray" values="0% 314.159%;157.080% 157.080%;0% 314.159%" calcMode="spline" keySplines="0.61, 1, 0.88, 1; 0.12, 0, 0.39, 0" keyTimes="0;0.5;1" dur="2s" repeatCount="indefinite"/>
+            </circle>
+          </svg>
+          <span class="dot" id="dot"></span>
+          <span id="statusText">Connecting…</span>
+        </span>
+        <button class="icon-btn" id="copyCodeBtn" title="Copy code" aria-label="Copy code">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+        </button>
+        <button class="icon-btn" id="shareCodeBtn" title="Share code" aria-label="Share code">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
+        </button>
+        <button class="help-icon" id="helpBtn" title="How it works" aria-label="How it works">?</button>
+        <button class="round-btn" id="settingsBtn" title="Settings" aria-label="Settings">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 8.9 19a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 5 8.9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9.4a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8v.1a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="content-box" id="contentBox"></div>
+
+    <div class="input-container">
+      <div class="composer-tools">
+        <button class="tool-btn" id="attachBtn" title="Send a photo" aria-label="Send a photo">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+        </button>
+        <button class="tool-btn" id="lockBtn" title="Vault Lock: password-lock your next message" aria-label="Vault Lock">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        </button>
+        <span class="tool-hint" id="lockHint"></span>
+      </div>
+      <div class="input-area">
+        <textarea id="messageInput" rows="1" placeholder="Message..."></textarea>
+        <button class="send-btn" id="sendBtn" title="Send" aria-label="Send">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+        </button>
+      </div>
+      <div class="content-warning">Public on ntfy.sh · Photos are kept by ntfy for ~3h (the app saves a local copy) · Vault Lock keeps what you send unreadable without the passcode.</div>
+    </div>
+  </main>
+</div>
+
+<input type="file" id="fileInput" accept="image/*" hidden>
+
+<!-- New chat modal -->
+<div class="modal" id="newChatModal">
+  <div class="modal-content">
+    <h3>New chat</h3>
+    <p>Enter the code from the other device to start a conversation.</p>
+    <div class="settings-list">
+      <div class="field"><label>Code (topic)</label><input id="newChatCode" inputmode="numeric" maxlength="6" placeholder="123456"></div>
+      <div class="field"><label>Name (optional)</label><input id="newChatName" placeholder="Chat name"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="cancel" id="newChatCancel">Cancel</button>
+      <button class="confirm" id="newChatConfirm">Start chat</button>
+    </div>
+  </div>
+</div>
+
+<!-- Passcode modal (Vault Lock) -->
+<div class="modal" id="passModal">
+  <div class="modal-content">
+    <h3 id="passTitle">Passcode</h3>
+    <p id="passDesc"></p>
+    <div class="settings-list">
+      <div class="field"><label>Passcode</label><input id="passInput" type="password" autocomplete="off" placeholder="••••••"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="cancel" id="passCancel">Cancel</button>
+      <button class="confirm" id="passOk">Unlock</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings modal -->
+<div class="modal" id="settingsModal">
+  <div class="modal-content">
+    <h3>Settings</h3>
+    <div class="settings-list">
+      <div class="field"><label>Display name</label><input id="nameInput"></div>
+      <div class="field field-row"><label>Dark mode</label>
+        <label class="toggle"><input type="checkbox" id="themeToggle"><span class="slider"></span></label>
+      </div>
+      <div class="field"><label>Notifications</label><button class="settings-btn" id="notifBtn">Enable notifications</button></div>
+      <div class="field"><label>Sound</label><button class="settings-btn export" id="soundBtn">Test sound</button></div>
+      <div class="field"><label>Danger zone</label>
+        <button class="settings-btn danger" id="regenBtn">Generate new code</button>
+        <button class="settings-btn delete" id="resetBtn" style="margin-top:8px">Reset device</button>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="confirm" id="settingsClose">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Help overlay -->
+<div class="help-overlay" id="helpOverlay">
+  <div class="help-overlay-content">
+    <h3>How it works</h3>
+    <p>Your 6-digit code is a topic on ntfy.sh. Share it and any message sent to that topic appears here live. Add a chat with another device's code to talk on a different topic.</p>
+    <p><b>Photos</b> — tap the image button, or paste/drag an image in. Images are downsized and uploaded to ntfy, shown inline, and saved locally so they stay even after ntfy expires them (~3h). Tap an image to open it or save it.</p>
+    <p><b>Vault Lock 🔒</b> — arm the lock, then send. Your message (or photo) is encrypted on your device with a passcode before it ever reaches ntfy. Anyone with the code still sees only ciphertext; the recipient needs the passcode to read it. Message text and photos are both supported.</p>
+    <button class="help-overlay-close" id="helpClose">Got it</button>
+  </div>
+</div>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox">
+  <img id="lightboxImg" alt="image">
+  <div class="lightbox-bar">
+    <button id="lightboxDownload">Save image</button>
+    <button class="ghost" id="lightboxClose">Close</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const $ = id => document.getElementById(id);
+
+  /* ---------- wire markers (ASCII only — HTTP headers can't carry unicode) ---------- */
+  const VAULT_PREFIX = 'VLT1|';
+  const IMG_PREFIX = 'IMG1|';
+
+  /* ---------- state ---------- */
+  const state = {
+    name: localStorage.getItem('ntfy_name') || 'Me',
+    chats: loadChats(),
+    activeCode: null,
+    search: ''
+  };
+  const seenIds = new Set();
+  const streams = {};
+  let lockArmed = false;
+
+  /* ---------- basic utils ---------- */
+  function makeCode(){ return String(Math.floor(100000 + Math.random()*900000)); }
+  function ownCode(){
+    let c = localStorage.getItem('ntfy_code');
+    if (!c){ c = makeCode(); localStorage.setItem('ntfy_code', c); }
+    return c;
+  }
+  function loadChats(){
+    try { const a = JSON.parse(localStorage.getItem('ntfy_chats') || '[]'); return Array.isArray(a) ? a : []; }
+    catch(_) { return []; }
+  }
+  function saveChats(){
+    try { localStorage.setItem('ntfy_chats', JSON.stringify(state.chats)); }
+    catch(_){
+      // storage full: drop cached copies of images (originals stay on ntfy)
+      state.chats.forEach(c => c.messages.forEach(m => { if (m.cached) delete m.dataUrl; }));
+      try { localStorage.setItem('ntfy_chats', JSON.stringify(state.chats)); } catch(__){}
+    }
+  }
+  function newId(){ return 'm_' + Math.random().toString(36).slice(2) + Date.now(); }
+  function activeChat(){ return state.chats.find(c => c.code === state.activeCode) || state.chats[0]; }
+  function avatarText(s){ return (s || '?').trim().slice(0,2).toUpperCase(); }
+  function escapeHtml(s){ return (s + '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function formatTime(ts){ return new Date(ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
+  function formatDate(ts){
+    const d = new Date(ts), t = new Date();
+    if (d.toDateString() === t.toDateString()) return 'Today';
+    const y = new Date(t); y.setDate(t.getDate() - 1);
+    if (d.toDateString() === y.toDateString()) return 'Yesterday';
+    return d.toLocaleDateString();
+  }
+  function lastTime(c){ const m = c.messages[c.messages.length-1]; return m ? m.time : 0; }
+
+  /* ---------- base64 helpers (UTF-8 safe) ---------- */
+  function b64EncodeUtf8(s){
+    const bytes = new TextEncoder().encode(s);
+    let bin = ''; for (let i=0;i<bytes.length;i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin);
+  }
+  function b64DecodeUtf8(b){
+    const bin = atob(b);
+    const bytes = new Uint8Array(bin.length);
+    for (let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+    return new TextDecoder().decode(bytes);
+  }
+  function safeDecode(b){ try { return b64DecodeUtf8(b); } catch(_) { return ''; } }
+  function bufToB64(buf){
+    const bytes = new Uint8Array(buf);
+    let bin = ''; for (let i=0;i<bytes.length;i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin);
+  }
+  function b64ToBytes(s){
+    const bin = atob(s);
+    const bytes = new Uint8Array(bin.length);
+    for (let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
+
+  /* ---------- Vault Lock crypto (AES-GCM + PBKDF2) ---------- */
+  function vaultAvailable(){ return !!(window.crypto && window.crypto.subtle) && window.isSecureContext !== false; }
+
+  async function vaultKey(pass, salt){
+    const enc = new TextEncoder();
+    const base = await crypto.subtle.importKey('raw', enc.encode(pass), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey(
+      { name:'PBKDF2', salt, iterations: 150000, hash:'SHA-256' },
+      base, { name:'AES-GCM', length:256 }, false, ['encrypt','decrypt']
+    );
+  }
+  async function vaultEncryptText(pass, text){
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const key = await vaultKey(pass, salt);
+    const ct = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, new TextEncoder().encode(text));
+    return bufToB64(salt) + '.' + bufToB64(iv) + '.' + bufToB64(ct);
+  }
+  async function vaultDecryptText(pass, payload){
+    const parts = payload.split('.');
+    const salt = b64ToBytes(parts[0]), iv = b64ToBytes(parts[1]), ct = b64ToBytes(parts[2]);
+    const key = await vaultKey(pass, salt);
+    const pt = await crypto.subtle.decrypt({ name:'AES-GCM', iv }, key, ct);
+    return new TextDecoder().decode(pt);
+  }
+  async function vaultEncryptBytes(pass, buf){
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const key = await vaultKey(pass, salt);
+    const ct = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, buf);
+    return { salt: bufToB64(salt), iv: bufToB64(iv), ct: new Uint8Array(ct) };
+  }
+  async function vaultDecryptBytes(pass, saltB64, ivB64, ctBuf){
+    const salt = b64ToBytes(saltB64), iv = b64ToBytes(ivB64);
+    const key = await vaultKey(pass, salt);
+    return crypto.subtle.decrypt({ name:'AES-GCM', iv }, key, ctBuf);
+  }
+
+  /* ---------- image helpers ---------- */
+  function fileToDataUrl(file){
+    return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+  }
+  function blobToDataUrl(blob){
+    return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(blob); });
+  }
+  function loadImage(src){
+    return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+  }
+  function dataURLtoBlob(d){
+    const parts = d.split(',');
+    const mime = (parts[0].match(/:(.*?);/) || [,'image/jpeg'])[1];
+    const bytes = b64ToBytes(parts[1]);
+    return new Blob([bytes], { type: mime });
+  }
+  // Downscale + compress any image source. Returns { dataUrl, blob, mime }.
+  async function processImageSource(dataUrl, maxDim, quality){
+    const img = await loadImage(dataUrl);
+    let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+    const scale = Math.min(1, maxDim / Math.max(w, h));
+    w = Math.max(1, Math.round(w * scale));
+    h = Math.max(1, Math.round(h * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, w, h);
+    const srcMime = (dataUrl.match(/^data:([^;]+)/) || [,'image/jpeg'])[1];
+    const usePng = /png|gif|webp/i.test(srcMime);
+    const mime = usePng ? 'image/png' : 'image/jpeg';
+    const out = usePng ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', quality);
+    return { dataUrl: out, blob: dataURLtoBlob(out), mime };
+  }
+
+  /* ---------- chat bookkeeping ---------- */
+  function ensureOwnChat(){
+    const code = ownCode();
+    let c = state.chats.find(x => x.code === code);
+    if (!c){
+      c = { code, title:'My channel', messages:[], unread:0, own:true };
+      state.chats.unshift(c); saveChats();
+    } else { c.own = true; }
+    return c;
+  }
+  function seedSeen(){
+    state.chats.forEach(c => c.messages.forEach(m => { if (m.eventId) seenIds.add(m.eventId); }));
+  }
+
+  /* ---------- rendering ---------- */
+  function previewText(m){
+    if (!m) return 'No messages yet';
+    if (m.locked) return '🔒 Locked ' + (m.kind === 'image' ? 'photo' : 'message');
+    if (m.kind === 'image') return (m.text ? '📷 ' + m.text : '📷 Photo');
+    return m.text || '';
+  }
+
+  function renderChatList(){
+    const list = $('chatList');
+    list.innerHTML = '';
+    const chats = state.chats.slice().sort((a,b) => lastTime(b) - lastTime(a));
+    chats.forEach(c => {
+      const last = c.messages[c.messages.length-1];
+      const li = document.createElement('li');
+      li.className = 'list-item' + (c.code === state.activeCode ? ' active' : '');
+
+      const avatar = document.createElement('div');
+      avatar.className = 'item-avatar';
+      avatar.textContent = avatarText(c.title || c.code);
+
+      const main = document.createElement('div');
+      main.className = 'item-main';
+      const title = document.createElement('div');
+      title.className = 'item-title';
+      title.textContent = c.title || c.code;
+      const preview = document.createElement('div');
+      preview.className = 'item-preview';
+      preview.textContent = last ? ((last.mine ? 'You: ' : '') + previewText(last)) : 'No messages yet';
+      main.appendChild(title); main.appendChild(preview);
+
+      const side = document.createElement('div');
+      side.className = 'item-side';
+      const time = document.createElement('span');
+      time.className = 'item-time';
+      time.textContent = last ? formatTime(last.time) : '';
+      side.appendChild(time);
+      if (c.unread){
+        const badge = document.createElement('span');
+        badge.className = 'unread-badge';
+        badge.textContent = c.unread;
+        side.appendChild(badge);
+      }
+
+      const dots = document.createElement('button');
+      dots.className = 'dots-btn';
+      dots.title = 'Options';
+      dots.textContent = '⋮';
+
+      li.appendChild(avatar); li.appendChild(main); li.appendChild(side); li.appendChild(dots);
+
+      const dd = document.createElement('div');
+      dd.className = 'dropdown';
+      if (c.own){
+        const opt = document.createElement('button');
+        opt.textContent = 'Copy code';
+        opt.addEventListener('click', e => { e.stopPropagation(); dd.classList.remove('show'); copyText(c.code, 'Code ' + c.code + ' copied'); });
+        dd.appendChild(opt);
+      } else {
+        const ren = document.createElement('button');
+        ren.textContent = 'Rename';
+        ren.addEventListener('click', e => {
+          e.stopPropagation(); dd.classList.remove('show');
+          const n = prompt('Chat name', c.title || c.code);
+          if (n !== null){ c.title = n.trim() || c.code; saveChats(); renderChatList(); renderMessages(); }
+        });
+        const del = document.createElement('button');
+        del.className = 'delete-opt';
+        del.textContent = 'Delete';
+        del.addEventListener('click', e => {
+          e.stopPropagation(); dd.classList.remove('show');
+          if (!confirm('Delete this chat?')) return;
+          state.chats = state.chats.filter(x => x.code !== c.code);
+          if (streams[c.code]){ streams[c.code].close(); delete streams[c.code]; }
+          if (state.activeCode === c.code) state.activeCode = state.chats[0].code;
+          saveChats(); subscribeAll(); renderChatList(); renderMessages();
+        });
+        dd.appendChild(ren); dd.appendChild(del);
+      }
+      li.appendChild(dd);
+
+      dots.addEventListener('click', e => {
+        e.stopPropagation();
+        const open = dd.classList.contains('show');
+        document.querySelectorAll('.dropdown.show').forEach(d => d.classList.remove('show'));
+        if (!open) dd.classList.add('show');
+      });
+      li.addEventListener('click', () => { if (!dd.classList.contains('show')) openChat(c.code); });
+
+      list.appendChild(li);
+    });
+  }
+
+  function vaultCard(m){
+    const card = document.createElement('div');
+    card.className = 'vault';
+    const icon = document.createElement('div');
+    icon.className = 'vault-icon';
+    icon.textContent = m.kind === 'image' ? '🔒' : '🔒';
+    const body = document.createElement('div');
+    body.className = 'vault-body';
+    const t = document.createElement('div');
+    t.className = 'vault-title';
+    t.textContent = m.kind === 'image' ? 'Locked photo' : 'Locked message';
+    const s = document.createElement('div');
+    s.className = 'vault-sub';
+    s.textContent = 'Passcode required';
+    body.appendChild(t); body.appendChild(s);
+    const btn = document.createElement('button');
+    btn.className = 'vault-unlock';
+    btn.textContent = 'Unlock';
+    btn.addEventListener('click', () => unlockMessage(m));
+    card.appendChild(icon); card.appendChild(body); card.appendChild(btn);
+    return card;
+  }
+
+  function messageEl(m, latest){
+    const row = document.createElement('div');
+    row.className = 'message ' + (m.mine ? 'out' : 'in') + (latest ? ' latest' : '');
+
+    if (m.locked && !m.text && !m.dataUrl){
+      row.appendChild(vaultCard(m));
+    } else if (m.kind === 'image' && (m.dataUrl || m.attachUrl)){
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble image-bubble';
+      const img = document.createElement('img');
+      img.className = 'chat-image';
+      img.loading = 'lazy';
+      img.alt = m.name || 'image';
+      img.src = m.dataUrl || m.attachUrl;
+      img.addEventListener('click', () => openLightbox(m.dataUrl || m.attachUrl, m.name));
+      bubble.appendChild(img);
+      if (m.text){
+        const cap = document.createElement('div');
+        cap.className = 'image-caption';
+        cap.textContent = m.text;
+        bubble.appendChild(cap);
+      }
+      row.appendChild(bubble);
+    } else {
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      bubble.textContent = m.text || '';
+      row.appendChild(bubble);
+    }
+
+    const meta = document.createElement('div');
+    meta.className = 'message-meta';
+    const who = document.createElement('span');
+    who.textContent = m.sender || (m.mine ? 'You' : 'Remote');
+    const dot = document.createElement('span'); dot.textContent = '·';
+    const time = document.createElement('span'); time.textContent = formatTime(m.time);
+    meta.appendChild(who); meta.appendChild(dot); meta.appendChild(time);
+    if (m.locked){
+      const lb = document.createElement('span');
+      lb.className = 'lock-badge';
+      lb.textContent = '🔒';
+      meta.appendChild(lb);
+    }
+    if (m.mine){
+      const st = document.createElement('span');
+      st.textContent = m.status === 'sending' ? '⏳' : m.status === 'failed' ? '⚠️' : '✓';
+      meta.appendChild(st);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'message-actions';
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'action-btn';
+    copyBtn.title = 'Copy';
+    copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
+    copyBtn.addEventListener('click', () => {
+      if (m.kind === 'image' && !m.text){ toast('Nothing to copy'); return; }
+      copyText(m.text || '', 'Copied');
+    });
+    const delBtn = document.createElement('button');
+    delBtn.className = 'action-btn';
+    delBtn.title = 'Delete';
+    delBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13"/></svg>';
+    delBtn.addEventListener('click', () => {
+      const chat = activeChat();
+      chat.messages = chat.messages.filter(x => x.id !== m.id);
+      saveChats(); renderMessages(); renderChatList();
+    });
+    actions.appendChild(copyBtn); actions.appendChild(delBtn);
+
+    row.appendChild(meta); row.appendChild(actions);
+    return row;
+  }
+
+  function renderMessages(){
+    const box = $('contentBox');
+    box.innerHTML = '';
+    const chat = activeChat();
+    $('chatTitle').textContent = chat ? (chat.title || chat.code) : 'No chat';
+    $('chatCode').textContent = chat ? chat.code : '';
+    updateStatus();
+    if (!chat) return;
+
+    let msgs = chat.messages.slice().sort((a,b) => a.time - b.time);
+    if (state.search){
+      const q = state.search.toLowerCase();
+      msgs = msgs.filter(m => (m.text || '').toLowerCase().includes(q) || (m.sender || '').toLowerCase().includes(q));
+    }
+
+    if (!msgs.length){
+      const g = document.createElement('div');
+      g.className = 'greeting';
+      if (state.search){
+        g.textContent = 'No results';
+      } else {
+        g.innerHTML = 'Say hello 👋<span class="greeting-sub">Messages on <b>' + escapeHtml(chat.code) + '</b> appear here. Tap the image button to send a photo, or the lock to send an encrypted message.</span>';
+      }
+      box.appendChild(g);
+      return;
+    }
+
+    let lastDate = '';
+    msgs.forEach((m, idx) => {
+      const d = formatDate(m.time);
+      if (d !== lastDate){
+        const sep = document.createElement('div');
+        sep.className = 'day-separator';
+        sep.textContent = d;
+        box.appendChild(sep);
+        lastDate = d;
+      }
+      box.appendChild(messageEl(m, idx === msgs.length - 1));
+    });
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function updateStatus(){
+    const es = streams[state.activeCode];
+    const sp = $('statusSpinner'), dot = $('dot'), txt = $('statusText');
+    if (!es){
+      sp.style.display = 'none'; dot.style.display = 'inline-block';
+      dot.className = 'dot err'; txt.textContent = 'Offline';
+      return;
+    }
+    if (es.readyState === 1){
+      sp.style.display = 'none'; dot.style.display = 'inline-block';
+      dot.className = 'dot on'; txt.textContent = 'Live';
+    } else if (es.readyState === 0){
+      sp.style.display = 'block'; dot.style.display = 'none'; txt.textContent = 'Connecting…';
+    } else {
+      sp.style.display = 'none'; dot.style.display = 'inline-block';
+      dot.className = 'dot err'; txt.textContent = 'Reconnecting…';
+    }
+  }
+
+  function openLightbox(src, name){
+    $('lightboxImg').src = src;
+    $('lightboxDownload').dataset.name = name || 'image';
+    $('lightbox').classList.add('show');
+  }
+  async function downloadLightbox(){
+    const src = $('lightboxImg').src;
+    const name = $('lightboxDownload').dataset.name || 'image';
+    try {
+      const blob = src.startsWith('data:') ? dataURLtoBlob(src) : await (await fetch(src)).blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } catch(_){ toast('Could not save image'); }
+  }
+
+  /* ---------- unlock ---------- */
+  async function unlockMessage(m){
+    if (!vaultAvailable()){ toast('Encryption not available here (open over http://127.0.0.1)'); return; }
+    const pass = await askPasscode({ title: 'Unlock', desc: 'Enter the passcode to read this message.', ok: 'Unlock' });
+    if (pass === null) return;
+    try {
+      if (m.kind === 'image'){
+        if (!m.attachUrl) throw new Error('expired');
+        const resp = await fetch(m.attachUrl);
+        if (!resp.ok) throw new Error('fetch');
+        const ct = await resp.arrayBuffer();
+        const pt = await vaultDecryptBytes(pass, m.cipher.salt, m.cipher.iv, ct);
+        const blob = new Blob([pt], { type: m.mime || 'image/png' });
+        m.dataUrl = await blobToDataUrl(blob);
+        m.cached = true;
+      } else {
+        m.text = await vaultDecryptText(pass, m.cipher);
+      }
+      m.locked = false; delete m.cipher;
+      saveChats(); renderMessages(); renderChatList();
+      toast('Unlocked');
+    } catch(err){
+      toast('Wrong passcode or the photo expired');
+    }
+  }
+
+  /* ---------- ntfy stream ---------- */
+  function subscribeAll(){ state.chats.forEach(c => subscribe(c.code)); }
+  function subscribe(code){
+    if (streams[code]) return;
+    const es = new EventSource('https://ntfy.sh/' + encodeURIComponent(code) + '/sse');
+    streams[code] = es;
+    es.onopen = () => updateStatus();
+    es.onmessage = (e) => handleEvent(code, e);
+    es.onerror = () => updateStatus();
+  }
+
+  function parseTextEvent(ev){
+    let raw = (ev.message || '').trim();
+    let name = 'Remote', text = raw;
+    const i = raw.indexOf(':');
+    if (i > -1){
+      const left = raw.slice(0, i).trim();
+      const right = raw.slice(i + 1).trim();
+      if (left && left.length <= 40){ name = left; text = right; }
+    }
+    return { name, text };
+  }
+
+  function handleEvent(topic, e){
+    let ev;
+    try { ev = JSON.parse(e.data); } catch(_) { return; }
+    if (!ev || (ev.event && ev.event !== 'message')) return;
+    if (ev.id && seenIds.has(ev.id)) return;
+    if (ev.title && String(ev.title).trim() === ownCode()){ if (ev.id) seenIds.add(ev.id); return; }
+
+    const chat = state.chats.find(c => c.code === topic);
+    if (!chat) return;
+    if (ev.id) seenIds.add(ev.id);
+
+    const att = ev.attachment || null;
+    const base = {
+      id: newId(), eventId: ev.id, mine: false, status: 'received',
+      time: ev.time ? ev.time * 1000 : Date.now()
+    };
+    let msg = null;
+
+    if (att){
+      const raw = ev.message || '';
+      const parts = raw.split('|');
+      let name = 'Remote', flag = 'o', payload = '';
+      if (parts[0] === 'IMG1'){
+        name = safeDecode(parts[1]) || 'Remote';
+        flag = parts[2] || 'o';
+        payload = parts.slice(3).join('|');
+      }
+      if (flag === 'l'){
+        const pp = payload.split('.');
+        msg = Object.assign(base, {
+          sender: name, kind: 'image', locked: true,
+          cipher: { salt: pp[0], iv: pp[1] }, mime: safeDecode(pp[2]) || 'image/png',
+          attachUrl: att.url, name: att.name || 'photo'
+        });
+      } else {
+        msg = Object.assign(base, {
+          sender: name, kind: 'image', text: flag === 'o' ? safeDecode(payload) : '',
+          dataUrl: att.url, attachUrl: att.url, name: att.name || 'photo'
+        });
+      }
+    } else {
+      const parsed = parseTextEvent(ev);
+      let name = parsed.name, text = parsed.text;
+      if (text.startsWith(VAULT_PREFIX)){
+        const rest = text.slice(VAULT_PREFIX.length).split('|');
+        if (rest[0] === 't'){
+          msg = Object.assign(base, { sender: name, locked: true, kind: 'text', cipher: rest[1] || '' });
+        }
+      }
+      if (!msg){
+        msg = Object.assign(base, { sender: name, text });
+      }
+    }
+
+    if (!msg) return;
+    if (msg.kind === 'text' && !msg.text && !msg.locked) return;
+
+    chat.messages.push(msg);
+    if (state.activeCode === topic && document.hasFocus()){ /* visible */ }
+    else { chat.unread = (chat.unread || 0) + 1; }
+    saveChats();
+    renderChatList();
+    if (state.activeCode === topic) renderMessages();
+
+    if (msg.kind === 'image' && !msg.locked){
+      cacheImage(msg);
+    }
+    playSound();
+    notifyUser(msg.sender || 'New message', msg.locked ? '🔒 Locked message' : (msg.kind === 'image' ? '📷 Photo' : (msg.text || '')));
+  }
+
+  // Keep a local copy so the image survives ntfy's short attachment lifetime.
+  async function cacheImage(m){
+    if (m.cached || !m.attachUrl) return;
+    try {
+      const resp = await fetch(m.attachUrl);
+      if (!resp.ok) return;
+      const blob = await resp.blob();
+      const du = await blobToDataUrl(blob);
+      const small = await processImageSource(du, 900, 0.72);
+      if (small.dataUrl.length < 700000){
+        m.dataUrl = small.dataUrl; m.cached = true;
+        saveChats();
+        if (state.activeCode === activeChat().code) renderMessages();
+      }
+    } catch(_){ /* keep using the remote URL */ }
+  }
+
+  /* ---------- sending ---------- */
+  async function sendMessage(){
+    const input = $('messageInput');
+    const text = input.value.trim();
+    if (!text) return;
+    const chat = activeChat();
+    if (!chat) return;
+    const name = state.name;
+
+    let body, msg;
+    if (lockArmed){
+      if (!vaultAvailable()){ toast('Encryption not available here'); return; }
+      const pass = await askPasscode({
+        title: 'Lock message', desc: 'Set a passcode. The recipient needs it to read this message — ntfy only sees ciphertext.',
+        ok: 'Lock & send'
+      });
+      if (pass === null) return;
+      const payload = await vaultEncryptText(pass, text);
+      body = name + ': ' + VAULT_PREFIX + 't|' + payload;
+      msg = { id: newId(), text, sender: name, time: Date.now(), mine: true, status: 'sending', locked: true, kind: 'text' };
+    } else {
+      body = name + ': ' + text;
+      msg = { id: newId(), text, sender: name, time: Date.now(), mine: true, status: 'sending' };
+    }
+
+    chat.messages.push(msg);
+    saveChats(); renderMessages(); renderChatList();
+    input.value = ''; autoResize();
+
+    try {
+      const res = await fetch('https://ntfy.sh/' + encodeURIComponent(chat.code), {
+        method: 'POST', body,
+        headers: { 'Title': ownCode() }
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const j = await res.json().catch(() => null);
+      if (j && j.id){ msg.eventId = j.id; seenIds.add(j.id); }
+      msg.status = 'sent';
+    } catch(err){
+      msg.status = 'failed';
+      toast('Send failed: ' + err.message);
+    }
+    saveChats(); renderMessages(); renderChatList();
+  }
+
+  async function sendImage(file){
+    const chat = activeChat();
+    if (!chat) return;
+    if (!file || !(file.type || '').startsWith('image/')){ toast('Please choose an image'); return; }
+
+    let processed;
+    try {
+      const du = await fileToDataUrl(file);
+      processed = await processImageSource(du, 1600, 0.82);
+    } catch(_){ toast('Could not read that image'); return; }
+
+    const name = state.name;
+    const ext = processed.mime === 'image/png' ? 'png' : 'jpg';
+    const safeName = 'photo-' + Date.now() + '.' + ext;
+    const msg = {
+      id: newId(), text: '', sender: name, time: Date.now(), mine: true,
+      status: 'sending', kind: 'image', dataUrl: processed.dataUrl, name: safeName
+    };
+    chat.messages.push(msg);
+    saveChats(); renderMessages(); renderChatList();
+
+    try {
+      let res;
+      if (lockArmed){
+        if (!vaultAvailable()) throw new Error('encryption unavailable');
+        const pass = await askPasscode({
+          title: 'Lock photo', desc: 'Set a passcode. The photo is encrypted before upload — ntfy never sees the image.',
+          ok: 'Lock & send'
+        });
+        if (pass === null){ chat.messages = chat.messages.filter(m => m !== msg); saveChats(); renderMessages(); renderChatList(); return; }
+        const buf = await processed.blob.arrayBuffer();
+        const enc = await vaultEncryptBytes(pass, buf);
+        msg.locked = true;
+        const meta = IMG_PREFIX + b64EncodeUtf8(name) + '|l|' + enc.salt + '.' + enc.iv + '.' + b64EncodeUtf8(processed.mime);
+        res = await fetch('https://ntfy.sh/' + encodeURIComponent(chat.code), {
+          method: 'PUT', body: new Blob([enc.ct], { type: 'application/octet-stream' }),
+          headers: { 'Title': ownCode(), 'Filename': 'locked.bin', 'Message': meta }
+        });
+      } else {
+        const meta = IMG_PREFIX + b64EncodeUtf8(name) + '|o|' + b64EncodeUtf8('');
+        res = await fetch('https://ntfy.sh/' + encodeURIComponent(chat.code), {
+          method: 'PUT', body: processed.blob,
+          headers: { 'Title': ownCode(), 'Filename': safeName, 'Message': meta }
+        });
+      }
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const j = await res.json().catch(() => null);
+      if (j && j.id){ msg.eventId = j.id; seenIds.add(j.id); }
+      if (j && j.attachment && j.attachment.url) msg.attachUrl = j.attachment.url;
+      msg.status = 'sent';
+    } catch(err){
+      msg.status = 'failed';
+      toast('Photo send failed: ' + err.message);
+    }
+    saveChats(); renderMessages(); renderChatList();
+  }
+
+  /* ---------- passcode modal ---------- */
+  let passResolve = null;
+  function askPasscode(opts){
+    opts = opts || {};
+    return new Promise(resolve => {
+      passResolve = resolve;
+      $('passTitle').textContent = opts.title || 'Passcode';
+      $('passDesc').textContent = opts.desc || '';
+      $('passOk').textContent = opts.ok || 'Unlock';
+      $('passInput').value = '';
+      $('passInput').type = 'password';
+      openModal('passModal');
+      setTimeout(() => { try { $('passInput').focus(); } catch(_){} }, 60);
+    });
+  }
+  function resolvePass(val){
+    closeModal('passModal');
+    const r = passResolve; passResolve = null;
+    if (r) r(val);
+  }
+
+  /* ---------- interactions ---------- */
+  function openChat(code){
+    state.activeCode = code;
+    const c = state.chats.find(x => x.code === code);
+    if (c) c.unread = 0;
+    saveChats(); subscribe(code); renderChatList(); renderMessages();
+    $('sidebar').classList.remove('open');
+  }
+  function copyText(text, okMsg){
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(() => toast(okMsg)).catch(() => toast('Copy failed'));
+    } else { toast('Copy failed'); }
+  }
+  function autoResize(){
+    const t = $('messageInput');
+    t.style.height = 'auto';
+    t.style.height = Math.min(t.scrollHeight, 120) + 'px';
+  }
+  function toast(msg){
+    const t = $('toast');
+    t.textContent = msg;
+    t.style.display = 'block';
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => { t.style.display = 'none'; }, 2600);
+  }
+  let soundCtx = null, lastSound = 0;
+  function playSound(){
+    if (Date.now() - lastSound < 1200) return;
+    lastSound = Date.now();
+    try {
+      soundCtx = soundCtx || new (window.AudioContext || window.webkitAudioContext)();
+      const o = soundCtx.createOscillator(), g = soundCtx.createGain();
+      o.type = 'sine'; o.frequency.value = 660;
+      g.gain.setValueAtTime(0.001, soundCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.08, soundCtx.currentTime + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, soundCtx.currentTime + 0.18);
+      o.connect(g); g.connect(soundCtx.destination);
+      o.start(); o.stop(soundCtx.currentTime + 0.2);
+    } catch(_){}
+  }
+  function notifyUser(title, body){
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    if (document.visibilityState === 'visible') return;
+    try { new Notification(title, { body }); } catch(_){}
+  }
+  function openModal(id){ $(id).classList.add('show'); }
+  function closeModal(id){ $(id).classList.remove('show'); }
+  function applyTheme(){
+    if (localStorage.getItem('ntfy_theme') === 'light') document.body.classList.remove('dark');
+    else document.body.classList.add('dark');
+  }
+
+  /* ---------- wiring ---------- */
+  $('sidebarToggle').addEventListener('click', () => $('sidebar').classList.toggle('collapsed'));
+  $('menuBtn').addEventListener('click', () => $('sidebar').classList.toggle('open'));
+  $('settingsBtn').addEventListener('click', () => openModal('settingsModal'));
+  $('settingsClose').addEventListener('click', () => closeModal('settingsModal'));
+  $('newChatBtn').addEventListener('click', () => openModal('newChatModal'));
+  $('newChatCancel').addEventListener('click', () => closeModal('newChatModal'));
+  $('helpBtn').addEventListener('click', () => $('helpOverlay').classList.add('show'));
+  $('helpClose').addEventListener('click', () => $('helpOverlay').classList.remove('show'));
+  $('lightboxClose').addEventListener('click', () => $('lightbox').classList.remove('show'));
+  $('lightbox').addEventListener('click', e => { if (e.target === $('lightbox')) $('lightbox').classList.remove('show'); });
+  $('lightboxDownload').addEventListener('click', downloadLightbox);
+
+  ['settingsModal','newChatModal','passModal'].forEach(id => {
+    $(id).addEventListener('click', e => { if (e.target === $(id)) { if (id === 'passModal') resolvePass(null); else closeModal(id); } });
+  });
+  document.addEventListener('click', () => document.querySelectorAll('.dropdown.show').forEach(d => d.classList.remove('show')));
+
+  $('passOk').addEventListener('click', () => { const v = $('passInput').value; if (!v) return; resolvePass(v); });
+  $('passCancel').addEventListener('click', () => resolvePass(null));
+  $('passInput').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); $('passOk').click(); } });
+
+  $('newChatConfirm').addEventListener('click', () => {
+    const code = $('newChatCode').value.trim().replace(/\D/g, '');
+    const name = $('newChatName').value.trim();
+    if (code.length < 3){ toast('Enter a valid code'); return; }
+    if (!state.chats.find(c => c.code === code)){
+      state.chats.push({ code, title: name || ('Chat ' + code), messages:[], unread:0, own:false });
+      saveChats();
+    } else if (name){
+      const c = state.chats.find(x => x.code === code); c.title = name; saveChats();
+    }
+    $('newChatCode').value = ''; $('newChatName').value = '';
+    closeModal('newChatModal');
+    openChat(code);
+  });
+
+  $('searchInput').addEventListener('input', e => { state.search = e.target.value.trim(); renderMessages(); });
+  $('nameInput').addEventListener('change', e => { state.name = e.target.value.trim() || 'Me'; localStorage.setItem('ntfy_name', state.name); });
+  $('themeToggle').addEventListener('change', () => {
+    document.body.classList.toggle('dark', $('themeToggle').checked);
+    localStorage.setItem('ntfy_theme', $('themeToggle').checked ? 'dark' : 'light');
+  });
+  $('notifBtn').addEventListener('click', async () => {
+    if (!('Notification' in window)){ toast('Notifications not supported'); return; }
+    const r = await Notification.requestPermission();
+    toast(r === 'granted' ? 'Notifications enabled' : 'Permission denied');
+  });
+  $('soundBtn').addEventListener('click', playSound);
+  $('regenBtn').addEventListener('click', () => {
+    if (!confirm('Generate a new code? Your old channel and its history will be removed.')) return;
+    const old = ownCode();
+    if (streams[old]){ streams[old].close(); delete streams[old]; }
+    const nc = makeCode();
+    localStorage.setItem('ntfy_code', nc);
+    state.chats = state.chats.filter(c => !c.own);
+    state.chats.unshift({ code:nc, title:'My channel', messages:[], unread:0, own:true });
+    state.activeCode = nc;
+    saveChats(); subscribe(nc); renderChatList(); renderMessages();
+    toast('New code: ' + nc);
+  });
+  $('resetBtn').addEventListener('click', () => {
+    if (!confirm('Reset this device? All chats and settings will be cleared.')) return;
+    localStorage.clear(); location.reload();
+  });
+
+  $('copyCodeBtn').addEventListener('click', () => { const c = activeChat(); if (c) copyText(c.code, 'Code ' + c.code + ' copied'); });
+  $('shareCodeBtn').addEventListener('click', async () => {
+    const c = activeChat(); if (!c) return;
+    if (navigator.share){ try { await navigator.share({ title:'ntfy code', text:c.code }); } catch(_){} }
+    else copyText(c.code, 'Code ' + c.code + ' copied');
+  });
+
+  // Vault Lock arm toggle
+  $('lockBtn').addEventListener('click', () => {
+    lockArmed = !lockArmed;
+    $('lockBtn').classList.toggle('active', lockArmed);
+    $('lockHint').textContent = lockArmed ? 'Vault Lock on — your next message will be encrypted' : '';
+    $('messageInput').placeholder = lockArmed ? 'Locked message...' : 'Message...';
+  });
+
+  // Images: attach / paste / drag-drop
+  $('attachBtn').addEventListener('click', () => $('fileInput').click());
+  $('fileInput').addEventListener('change', e => { const f = e.target.files[0]; if (f) sendImage(f); e.target.value = ''; });
+  document.addEventListener('paste', e => {
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (const it of items){
+      if (it.type && it.type.startsWith('image/')){ const f = it.getAsFile(); if (f){ sendImage(f); e.preventDefault(); } break; }
+    }
+  });
+  const contentBox = $('contentBox');
+  contentBox.addEventListener('dragover', e => { e.preventDefault(); contentBox.classList.add('drag-over'); });
+  contentBox.addEventListener('dragleave', () => contentBox.classList.remove('drag-over'));
+  contentBox.addEventListener('drop', e => {
+    e.preventDefault(); contentBox.classList.remove('drag-over');
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) sendImage(f);
+  });
+
+  $('messageInput').addEventListener('input', autoResize);
+  $('messageInput').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); sendMessage(); } });
+  $('sendBtn').addEventListener('click', sendMessage);
+  window.addEventListener('focus', () => { const c = activeChat(); if (c){ c.unread = 0; saveChats(); renderChatList(); } });
+
+  /* ---------- init ---------- */
+  applyTheme();
+  ensureOwnChat();
+  state.activeCode = ownCode();
+  $('themeToggle').checked = document.body.classList.contains('dark');
+  $('nameInput').value = state.name;
+  seedSeen();
+  subscribeAll();
+  renderChatList();
+  renderMessages();
+</script>
+</body>
+</html>
