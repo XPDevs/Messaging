@@ -210,9 +210,9 @@
   }
   .content-title{margin:0;font-size:1.15rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .header-code{font-size:12px;color:#aaa;white-space:nowrap}
-  .header-sub{display:flex;flex-direction:column;min-width:0}
+  .header-sub{display:flex;flex-direction:column;min-width:0;flex:1 1 auto}
   .typing-indicator{font-size:12px;color:var(--primary);height:14px;line-height:14px}
-  .content-header-actions{margin-left:auto;display:flex;align-items:center;gap:6px}
+  .content-header-actions{margin-left:auto;display:flex;align-items:center;gap:6px;flex-shrink:0}
 
   /* ===== Content box ===== */
   .content-box{
@@ -775,17 +775,12 @@
   @media(max-width:900px){.sidebar-footer .new-item-btn{flex:1}}
 
   /* ===== ADDED: responsive refinements + fixes ===== */
-  .header-sub{flex:1 1 auto;min-width:0}
-  .content-header-actions{margin-left:auto;flex-shrink:0}
-
-  /* touch devices: never rely on hover for actions */
   @media (hover:none), (pointer:coarse){
     .message-actions{display:none !important}
     .dots-btn{opacity:.75}
     .list-item:hover{background:transparent}
     .dots-btn:hover{background:transparent}
   }
-
   @media (max-width:820px){
     #copyCodeBtn, #helpBtn{display:none}
     .content-header{gap:6px;padding-left:10px;padding-right:10px}
@@ -1797,14 +1792,13 @@
   }
 
   function updateStatus(){
-    const es = streams[state.activeCode];
+    const st = (typeof streams !== 'undefined' && streams[state.activeCode]) ? streams[state.activeCode] : null;
     const sp = $('statusSpinner'), dot = $('dot'), txt = $('statusText');
     const dotS = $('dotSide'), txtS = $('statusTextSide');
-    let cls = 'dot', label = 'Connecting…', showSpinner = true;
-    if (!es){ cls = 'dot err'; label = 'Offline'; showSpinner = false; }
-    else if (es.readyState === 1){ cls = 'dot on'; label = 'Live'; showSpinner = false; }
-    else if (es.readyState === 0){ cls = 'dot'; label = 'Connecting…'; showSpinner = true; }
-    else { cls = 'dot err'; label = 'Reconnecting…'; showSpinner = false; }
+    let cls = 'dot', label = 'Offline', showSpinner = false;
+    if (st && st.connected){ cls = 'dot on'; label = 'Live'; }
+    else if (st && st.connecting){ cls = 'dot'; label = 'Connecting…'; showSpinner = true; }
+    else if (st && st.error){ cls = 'dot err'; label = 'Offline'; }
     if (sp) sp.style.display = showSpinner ? 'block' : 'none';
     if (dot){ dot.style.display = showSpinner ? 'none' : 'inline-block'; dot.className = cls; }
     if (txt) txt.textContent = label;
@@ -1969,18 +1963,136 @@
     return { name, text };
   }
 
+  /* ================= ROBUST CONNECTION LAYER (SSE + WebSocket fallback) ================= */
   const globalStreams = {};
+
   function subscribeAll(){ state.chats.forEach(c => subscribe(c.code)); }
+
   function subscribe(code){
-    const existing = globalStreams[code];
-    if (existing && existing.readyState !== 2) return;
-    if (existing){ try { existing.close(); } catch(_){} delete globalStreams[code]; }
-    const es = new EventSource('https://ntfy.sh/' + encodeURIComponent(code) + '/sse');
-    globalStreams[code] = es;
-    if (code === state.activeCode) streams[code] = es;
-    es.onopen = updateStatus;
-    es.onmessage = (e) => handleEvent(code, e);
-    es.onerror = updateStatus;
+    // Close any existing stream for this topic.
+    if (globalStreams[code]){
+      try { globalStreams[code].close(); } catch(_){}
+      delete globalStreams[code];
+    }
+    const conn = {
+      code,
+      connected: false,
+      connecting: true,
+      error: false,
+      es: null,
+      ws: null,
+      retryTimer: null,
+      retryCount: 0,
+      closedByUser: false
+    };
+    globalStreams[code] = conn;
+    if (code === state.activeCode) streams[code] = conn;
+
+    const setState = (patch) => {
+      Object.assign(conn, patch);
+      if (code === state.activeCode) updateStatus();
+    };
+
+    // A single helper that dispatches messages from either transport.
+    const onMessage = (data) => {
+      try { handleEvent(code, { data: JSON.stringify(data) }); } catch(_){}
+    };
+
+    const startWS = () => {
+      if (conn.closedByUser) return;
+      setState({ connecting: true, connected: false, error: false });
+      try {
+        const ws = new WebSocket('wss://ntfy.sh/' + encodeURIComponent(code) + '/ws');
+        conn.ws = ws;
+        ws.onopen = () => {
+          if (conn.ws !== ws) return;
+          setState({ connected: true, connecting: false, error: false });
+          conn.retryCount = 0;
+        };
+        ws.onmessage = (ev) => {
+          if (conn.ws !== ws) return;
+          try {
+            const data = JSON.parse(ev.data);
+            if (data.event === 'message') onMessage(data);
+          } catch(_){}
+        };
+        ws.onerror = () => {
+          if (conn.ws !== ws) return;
+          setState({ error: true, connected: false, connecting: false });
+        };
+        ws.onclose = () => {
+          if (conn.ws !== ws) return;
+          setState({ connected: false, connecting: false, error: true });
+          scheduleRetry();
+        };
+      } catch(_) {
+        setState({ error: true, connected: false, connecting: false });
+        scheduleRetry();
+      }
+    };
+
+    const startSSE = () => {
+      if (conn.closedByUser) return;
+      setState({ connecting: true, connected: false, error: false });
+      try {
+        // Note: withCredentials must remain false to avoid CORS issues.
+        const es = new EventSource('https://ntfy.sh/' + encodeURIComponent(code) + '/sse', { withCredentials: false });
+        conn.es = es;
+        es.onopen = () => {
+          if (conn.es !== es) return;
+          setState({ connected: true, connecting: false, error: false });
+          conn.retryCount = 0;
+        };
+        es.onmessage = (ev) => {
+          if (conn.es !== es) return;
+          try {
+            const data = JSON.parse(ev.data);
+            if (data.event === 'message') onMessage(data);
+          } catch(_){}
+        };
+        es.onerror = () => {
+          if (conn.es !== es) return;
+          // EventSource often fires onerror on temporary network hiccups; it also
+          // automatically reconnects. We'll mark the error but let it retry.
+          if (es.readyState === EventSource.CLOSED) {
+            setState({ error: true, connected: false, connecting: false });
+            scheduleRetry();
+          } else {
+            setState({ error: true, connected: false, connecting: false });
+          }
+        };
+      } catch(_) {
+        // If EventSource throws, fall back to WebSocket immediately.
+        setState({ error: true, connected: false, connecting: false });
+        startWS();
+      }
+    };
+
+    const scheduleRetry = () => {
+      if (conn.closedByUser) return;
+      if (conn.retryTimer) clearTimeout(conn.retryTimer);
+      conn.retryCount++;
+      const delay = Math.min(30000, 1000 * Math.pow(2, Math.min(conn.retryCount, 5)));
+      conn.retryTimer = setTimeout(() => {
+        if (conn.closedByUser) return;
+        // If EventSource is still not connected, try WebSocket.
+        if (conn.es && conn.es.readyState === EventSource.OPEN) return;
+        if (conn.ws && conn.ws.readyState === WebSocket.OPEN) return;
+        startWS();
+      }, delay);
+    };
+
+    // Prefer SSE first (it's the standard ntfy approach), but fall back to WS
+    // if the browser environment blocks it.
+    startSSE();
+
+    // Expose close
+    conn.close = () => {
+      conn.closedByUser = true;
+      if (conn.retryTimer) clearTimeout(conn.retryTimer);
+      if (conn.es){ try { conn.es.close(); } catch(_){} }
+      if (conn.ws){ try { conn.ws.close(); } catch(_){} }
+    };
   }
 
   function deliver(chat, msg){
@@ -2810,8 +2922,6 @@
     if (chat.group){ toast('Calls work in one to one chats only'); return; }
     if (!getAudioCtx()){ toast('Voice calls are not supported on this browser'); return; }
 
-    // Unlock audio and grab the microphone *inside* the tap, so the browser
-    // actually shows its permission prompt.
     unlockAudio();
     try {
       await acquireMic();
@@ -2872,7 +2982,6 @@
   async function handleIncomingCallOffer(chat, from, opts){
     if (from === state.name) return;
     if (callActive){
-      // Duplicate offer for the ring we're already showing → ignore.
       if (callChatCode === chat.code && callDirection === 'in' && !callConnected) return;
       sendControl(chat.code, { t:'v_reject' }, true);
       return;
@@ -2915,7 +3024,6 @@
   async function acceptCall(){
     if (!callActive || callConnected) return;
     unlockAudio();
-    // Ask for the mic from inside the tap first.
     try {
       await acquireMic();
     } catch(err){
@@ -3216,7 +3324,6 @@
   }
 
   async function receiveVoiceChunk(chat, from, dataStr, isEncrypted){
-    // Backwards compatibility with the old WebM chunk format.
     if (!callActive){
       handleIncomingCallOffer(chat, from, { pass: isEncrypted });
       return;
@@ -3447,39 +3554,74 @@
     saveChats(); subscribe(nc); renderChatList(); renderMessages();
     toast('New code: ' + nc);
   });
+
   $('resetBtn').addEventListener('click', async () => {
-    if (!confirm('Reset ntfy Chat on this device? This deletes saved chats, contacts, identity and preferences from this browser. It cannot delete messages already delivered to ntfy.sh or other devices.')) return;
+    const ok = confirm(
+      'Reset ntfy Chat on this device?\n\n' +
+      'This deletes ALL data saved on this device:\n' +
+      '• chats and local copies of messages\n' +
+      '• contacts and groups\n' +
+      '• your display name, code and settings\n' +
+      '• cached photos and voice notes\n' +
+      '• browser caches and the service worker\n\n' +
+      'Messages already delivered to ntfy.sh or other devices cannot be deleted.\n\n' +
+      'Continue?'
+    );
+    if (!ok) return;
+
     const button = $('resetBtn');
     button.disabled = true;
     button.textContent = 'Resetting…';
+
+    try { terminateCall(false, 'cancelled'); } catch(_){}
+    try { stopRecording(false); } catch(_){}
+    try { closeScanner(); } catch(_){}
+    try { stopRingtone(); } catch(_){}
+    try { if (typeof releaseMic === 'function') releaseMic(); } catch(_){}
+
     try {
-      try { terminateCall(false, 'cancelled'); } catch(_){}
-      try { stopRecording(false); } catch(_){}
-      try { closeScanner(); } catch(_){}
-      Object.values(globalStreams || {}).forEach(es => { try { es.close(); } catch(_){} });
+      Object.values(globalStreams || {}).forEach(conn => { try { conn.close(); } catch(_){} });
       Object.keys(globalStreams || {}).forEach(k => { try { delete globalStreams[k]; } catch(_){} });
-      Object.keys(localStorage).filter(k => k.startsWith('ntfy_')).forEach(k => localStorage.removeItem(k));
-      Object.keys(sessionStorage).filter(k => k.startsWith('ntfy_')).forEach(k => sessionStorage.removeItem(k));
+      Object.keys(streams || {}).forEach(k => { try { delete streams[k]; } catch(_){} });
+    } catch(_){}
+
+    try { localStorage.clear(); } catch(_){}
+    try { sessionStorage.clear(); } catch(_){}
+
+    try {
       if ('caches' in window){
         const names = await caches.keys();
-        await Promise.all(names.filter(n => /ntfy[-_ ]?chat/i.test(n)).map(n => caches.delete(n)));
+        await Promise.all(names.map(n => caches.delete(n).catch(() => false)));
       }
+    } catch(_){}
+
+    try {
       if ('serviceWorker' in navigator){
-        const registrations = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(registrations
-          .filter(r => {
-            try { return new URL(r.scope).pathname.startsWith(location.pathname.replace(/[^/]*$/, '')); }
-            catch(_) { return false; }
-          })
-          .map(r => r.unregister()));
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r => r.unregister().catch(() => false)));
       }
-      const cleanUrl = location.origin + location.pathname;
-      location.replace(cleanUrl);
-    } catch(err) {
-      button.disabled = false;
-      button.textContent = 'Reset device';
-      toast('Reset could not finish: ' + (err.message || 'unknown error'));
-    }
+    } catch(_){}
+
+    try {
+      if (window.indexedDB && indexedDB.databases){
+        const dbs = await indexedDB.databases();
+        await Promise.all(dbs.map(db => new Promise(res => {
+          if (!db.name) return res();
+          const req = indexedDB.deleteDatabase(db.name);
+          req.onsuccess = req.onerror = req.onblocked = () => res();
+        })));
+      }
+    } catch(_){}
+
+    const baseUrl = location.href.split('?')[0].split('#')[0];
+    const freshUrl = baseUrl + '?_reset=' + Date.now();
+    toast('Reset complete. Reloading…', 1200);
+
+    setTimeout(() => {
+      try { location.replace(freshUrl); }
+      catch(_) { try { location.href = freshUrl; } catch(__){} }
+      setTimeout(() => { try { location.reload(); } catch(_){} }, 900);
+    }, 350);
   });
 
   $('searchInput').addEventListener('input', e => { state.search = e.target.value; renderChatList(); renderMessages(); });
@@ -3603,6 +3745,16 @@
   ['joinOwnQr','qrImage'].forEach(id => {
     $(id).addEventListener('error', () => { $(id).style.opacity = '.25'; $(id).alt = 'QR unavailable'; });
   });
+
+  // Strip the reset cache-buster (?_reset=…) so it doesn't stay in the URL.
+  try {
+    if (location.search.includes('_reset=')) {
+      const p = new URLSearchParams(location.search);
+      p.delete('_reset');
+      const q = p.toString();
+      history.replaceState(null, '', location.pathname + (q ? '?' + q : '') + location.hash);
+    }
+  } catch(_){}
 
   const urlParams = new URLSearchParams(location.search);
   let urlCode = (urlParams.get('code') || '').replace(/\D/g, '');
