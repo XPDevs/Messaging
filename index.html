@@ -850,6 +850,7 @@
 </div>
 
 <!-- ===================== FULLSCREEN CALL SCREEN ===================== -->
+<audio id="ringtoneAudio" src="ringtone.mp3" loop preload="auto"></audio>
 <div class="call-screen" id="callScreen">
   <div class="call-user-info">
     <div class="call-avatar-wrapper">
@@ -868,7 +869,7 @@
       <button class="call-data-toggle" id="callDataToggle" type="button">Details</button>
     </div>
     <div class="call-data-details" id="callDataDetails">
-      <div class="cdp-row"><span>Transport</span><b>ntfy.sh &middot; chunked</b></div>
+      <div class="cdp-row"><span>Transport</span><b>ntfy.sh &middot; encrypted frames</b></div>
       <div class="cdp-row"><span>Audio</span><b id="callCodecInfo">µ-law 8 kHz</b></div>
       <div class="cdp-row"><span>Encryption</span><b id="callEncInfo">Off</b></div>
       <div class="cdp-row"><span>Errors</span><b id="callErrInfo">0</b></div>
@@ -1227,6 +1228,9 @@
   const ATT_PREFIX   = 'ATT1|';
   const CTL_MAGIC    = '@@ntfy#';
   const LOCAL_ONLY   = (location.protocol === 'file:');
+  if ('serviceWorker' in navigator){
+    navigator.serviceWorker.getRegistrations().then(function(rs){ rs.forEach(function(r){ r.unregister(); }); }).catch(function(){});
+  }
   const CTL_RAW      = '@@ntfyJ#';
   const QUICK_REACT  = ['👍','❤️','😂','😮','😢','🙏','🔥','✅'];
   const EMOJIS = ['😀','😁','😂','🤣','😊','😍','😘','😎','🤔','😅','😇','🙃','😉','😌','😜','🤗','🤩','😢','😭','😡','🥺','😴','🤤','🤒','🥳','😱','🤯','🤝','🙏','👍','👎','👏','🙌','💪','🤙','✌️','🫶','❤️','🧡','💛','💚','💙','💜','🖤','💔','💯','🔥','✨','🎉','🎂','☕','🍕','⚽','🚀','🌈','⭐','📍','📷','🎤','📎','🔒','🚨','✅','❌'];
@@ -1301,6 +1305,7 @@
   function newId(){ return 'm_' + Math.random().toString(36).slice(2) + Date.now(); }
   function activeChat(){ return state.chats.find(c => c.code === state.activeCode) || state.chats[0]; }
   function avatarText(s){ const t = (s || '?').trim(); return /^\d+$/.test(t) ? t.slice(-2) : t.slice(0,2).toUpperCase(); }
+  function safeUrl(u){ const s = String(u == null ? '' : u); return /^file:/i.test(s) ? '' : s; }
   function escapeHtml(s){ return (s + '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function formatTime(ts){ return new Date(ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
   function formatDate(ts){
@@ -1623,7 +1628,7 @@
       const img = el('img', 'chat-image');
       img.loading = 'lazy';
       img.alt = m.fileName || 'image';
-      img.src = m.dataUrl || m.attachUrl;
+      img.src = safeUrl(m.dataUrl || m.attachUrl);
       img.addEventListener('click', () => openLightbox(m.dataUrl || m.attachUrl, m.fileName || 'image'));
       img.addEventListener('error', () => {
         img.style.display = 'none';
@@ -1635,7 +1640,7 @@
       if (m.dataUrl || m.attachUrl){
         const a = document.createElement('audio');
         a.controls = true; a.preload = 'metadata';
-        a.src = m.dataUrl || m.attachUrl;
+        a.src = safeUrl(m.dataUrl || m.attachUrl);
         bubble.appendChild(a);
         const detail = m.duration ? callClock(m.duration) + ' · ' : '';
         bubble.appendChild(el('div', 'file-sub', detail + 'Voice note' + (m.size ? ' · ' + humanSize(m.size) : '')));
@@ -1824,7 +1829,7 @@
   }
 
   function openLightbox(src, name){
-    $('lightboxImg').src = src;
+    $('lightboxImg').src = safeUrl(src);
     $('lightboxDownload').dataset.name = name || 'image';
     $('lightbox').classList.add('show');
   }
@@ -2138,6 +2143,12 @@
         deliver(chat, msg); notifyMsg(msg); return;
       }
       case 'v_offer': { if (typeof handleIncomingCallOffer === 'function') handleIncomingCallOffer(chat, from, c); return; }
+      case 'a_offer': { if (typeof handleCallOfferSignal === 'function') handleCallOfferSignal(chat, from, c); return; }
+      case 'a_accept': { if (typeof ntOnAccept === 'function') ntOnAccept(chat, c); return; }
+      case 'a_frame': { if (typeof ntOnFrame === 'function') ntOnFrame(chat, from, c); return; }
+      case 'a_end': { if (typeof ntOnEnd === 'function') ntOnEnd(chat, c); return; }
+      case 'a_reject': { if (typeof ntOnReject === 'function') ntOnReject(chat, c); return; }
+      case 'a_busy': { if (typeof ntOnBusy === 'function') ntOnBusy(chat, c); return; }
       case 'w_offer': { if (typeof handleCallOfferSignal === 'function') handleCallOfferSignal(chat, from, c); return; }
       case 'w_answer': { if (typeof handleCallAnswerSignal === 'function') handleCallAnswerSignal(chat, from, c); return; }
       case 'w_ice': { if (typeof handleCallIceSignal === 'function') handleCallIceSignal(chat, from, c); return; }
@@ -2787,13 +2798,13 @@
     return { sentBytes:0, recvBytes:0, sentChunks:0, recvChunks:0, errors:0, startedAt:0 };
   }
 
-  /* Ringtone generated with Web Audio (no external file → no 404 noise) */
+  /* Ringtone. Uses ringtone.mp3, with a synthesised fallback. */
   let ringTimer = null;
-  function ringBeep(){
+  function ringBeepOnce(){
     const ctx = unlockAudio();
     if (!ctx || ctx.state !== 'running'){ vibrate([0,200,120,200]); return; }
     const t0 = ctx.currentTime;
-    [0, 0.45].forEach(off => {
+    [0, 0.45].forEach(function(off){
       const o = ctx.createOscillator(), g = ctx.createGain();
       o.type = 'sine'; o.frequency.value = 880;
       g.gain.setValueAtTime(0.0001, t0 + off);
@@ -2804,14 +2815,32 @@
     });
     vibrate([0,200,120,200]);
   }
+  function ringFallbackStart(){
+    if (ringTimer) return;
+    ringBeepOnce();
+    ringTimer = setInterval(ringBeepOnce, 2200);
+  }
+  function ringFallbackStop(){
+    if (ringTimer){ clearInterval(ringTimer); ringTimer = null; }
+  }
   function playRingtone(){
     stopRingtone();
     unlockAudio();
-    ringBeep();
-    ringTimer = setInterval(ringBeep, 2200);
+    const el = $('ringtoneAudio');
+    if (el){
+      try {
+        el.currentTime = 0;
+        const p = el.play();
+        if (p && p.catch) p.catch(function(){ ringFallbackStart(); });
+        return;
+      } catch(_){}
+    }
+    ringFallbackStart();
   }
   function stopRingtone(){
-    if (ringTimer){ clearInterval(ringTimer); ringTimer = null; }
+    const el = $('ringtoneAudio');
+    if (el){ try { el.pause(); el.currentTime = 0; } catch(_){} }
+    ringFallbackStop();
   }
 
   function prepareCallUI(isRinging){
@@ -2837,9 +2866,9 @@
     const dot = $('callDataDot');
     if (dot) dot.className = 'cds-dot' + (callConnected ? (callStats.errors ? ' err' : '') : ' idle');
     const codec = $('callCodecInfo');
-    if (codec) codec.textContent = 'µ-law ' + (CALL_SAMPLE_RATE / 1000) + ' kHz';
+    if (codec) codec.textContent = 'Opus · 10 kbps';
     const enc = $('callEncInfo');
-    if (enc) enc.textContent = callPasscode ? 'AES-GCM (passcode)' : 'Off';
+    if (enc) enc.textContent = callPasscode ? 'AES-GCM (passcode)' : 'AES-GCM (session key)';
     const errs = $('callErrInfo');
     if (errs) errs.textContent = String(callStats.errors);
   }
@@ -3797,150 +3826,157 @@
   });
 
   subscribeAll();
-/* ===== WebRTC call engine. Overrides the chunked audio transport. ===== */
-let rtcPc = null, rtcLocal = null, rtcRemote = null, rtcIce = [], rtcStatsTimer = null, rtcOffer = null, rtcParts = {}, rtcMaxed = false;
+/* ===== ntfy encrypted audio call engine ===== */
+const NA_BPS = 10000, NA_CHUNK = 1200, NA_MAX_PAYLOAD = 3700;
+let ntCid = null, ntKey = null, ntMime = '', ntOffer = null, ntRec = null, ntStream = null;
+let ntSeq = 0, ntRxSeq = 0, ntQueue = [], ntPlaying = false, ntCurAudio = null;
+let ntTimeout = null, ntSendBusy = false, ntFramesOk = 0, ntFramesBad = 0;
 
-function rtcSupported(){
-  return !!(window.RTCPeerConnection && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+async function ntNewKey(){
+  const raw = crypto.getRandomValues(new Uint8Array(32));
+  const key = await crypto.subtle.importKey('raw', raw, { name:'AES-GCM' }, true, ['encrypt','decrypt']);
+  return { raw, key };
 }
-function rtcSend(obj){
-  if (!callChatCode) return Promise.resolve({ id:null });
-  return sendControlEx(callChatCode, obj, { ephemeral:true, raw:true, timeout:9000 });
+async function ntImportKey(b64){
+  const key = await crypto.subtle.importKey('raw', b64ToBytes(b64), { name:'AES-GCM' }, false, ['encrypt','decrypt']);
+  return key;
 }
-function rtcSetState(text){ const el = $('callStateText'); if (el) el.textContent = text; }
-
-function rtcDesc(x){
-  try { return (typeof RTCSessionDescription === 'function') ? new RTCSessionDescription(x) : x; }
-  catch(_) { return x; }
+async function ntPassKey(pass, cid){
+  const data = new TextEncoder().encode('call|' + cid + '|' + pass);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return crypto.subtle.importKey('raw', digest, { name:'AES-GCM' }, false, ['encrypt','decrypt']);
 }
-function rtcCollect(kind, msg){
-  if (!msg || !msg.sdp) return null;
-  if (!msg.n || msg.n <= 1) return { type: msg.type || (kind === 'offer' ? 'offer' : 'answer'), sdp: msg.sdp };
-  const key = kind + ':' + (msg.type || '');
-  rtcParts[key] = rtcParts[key] || { n: msg.n, arr: [] };
-  rtcParts[key].arr[msg.i] = msg.sdp;
-  const have = rtcParts[key].arr.filter(function(x){ return typeof x === 'string'; }).length;
-  if (have < rtcParts[key].n) return null;
-  const sdp = rtcParts[key].arr.join('');
-  delete rtcParts[key];
-  return { type: msg.type || (kind === 'offer' ? 'offer' : 'answer'), sdp: sdp };
+async function ntEncrypt(key, bytes){
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, bytes);
+  return bufToB64(iv) + '.' + bufToB64(new Uint8Array(ct));
 }
-function rtcSendDesc(kind, desc){
-  const sdp = (desc && desc.sdp) || '';
-  const size = 2400;
-  const parts = [];
-  for (let i = 0; i < sdp.length; i += size) parts.push(sdp.slice(i, i + size));
-  parts.forEach(function(part, idx){
-    rtcSend({ t:kind, type:desc.type, sdp:part, i:idx, n:parts.length });
-  });
+async function ntDecrypt(key, payload){
+  const parts = String(payload).split('.');
+  const iv = b64ToBytes(parts[0]), ct = b64ToBytes(parts[1]);
+  const pt = await crypto.subtle.decrypt({ name:'AES-GCM', iv }, key, ct);
+  return new Uint8Array(pt);
 }
-function rtcCreatePeer(){
-  const pc = new RTCPeerConnection({ iceServers: [
-    { urls:'stun:stun.l.google.com:19302' },
-    { urls:'stun:stun1.l.google.com:19302' },
-    { urls:'stun:stun.cloudflare.com:3478' }
-  ]});
-  rtcPc = pc;
-  if (rtcLocal){
-    rtcLocal.getTracks().forEach(function(t){ try { pc.addTrack(t, rtcLocal); } catch(_){} });
+function ntPickMime(){
+  const list = ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/mp4'];
+  for (let i = 0; i < list.length; i++){
+    try { if (window.MediaRecorder && MediaRecorder.isTypeSupported(list[i])) return list[i]; } catch(_){}
   }
-  pc.onicecandidate = function(e){ if (e.candidate) rtcSend({ t:'w_ice', c:e.candidate }); };
-  pc.ontrack = function(e){
-    rtcRemote = (e.streams && e.streams[0]) ? e.streams[0] : new MediaStream([e.track]);
-    const a = $('remoteAudio');
-    if (a){ a.srcObject = rtcRemote; a.play().catch(function(){}); }
-    logCallData('note', 'remote audio attached');
-  };
-  pc.onconnectionstatechange = function(){
-    const s = pc.connectionState;
-    if (s === 'connected') rtcOnConnected();
-    else if (s === 'failed'){
-      callError('connection failed');
-      setTimeout(function(){ if (callActive) terminateCall(true, 'failed'); }, 900);
-    } else if (s === 'disconnected'){
-      rtcSetState('Reconnecting…');
-    }
-  };
-  return pc;
+  return '';
 }
-function rtcStartStats(){
-  clearInterval(rtcStatsTimer);
-  rtcStatsTimer = setInterval(async function(){
-    if (!rtcPc || !callConnected) return;
-    try {
-      const report = await rtcPc.getStats();
-      let inB = 0, outB = 0, inP = 0, outP = 0;
-      report.forEach(function(r){
-        if (r.type === 'inbound-rtp' && r.kind === 'audio'){ inB = r.bytesReceived || 0; inP = r.packetsReceived || 0; }
-        if (r.type === 'outbound-rtp' && r.kind === 'audio'){ outB = r.bytesSent || 0; outP = r.packetsSent || 0; }
-      });
-      callStats.recvBytes = inB; callStats.sentBytes = outB;
-      callStats.recvChunks = inP; callStats.sentChunks = outP;
-      updateCallDataUI();
-    } catch(_){}
-  }, 1000);
+async function ntSend(obj){
+  if (!callChatCode) return { error:'no chat' };
+  const r = await sendControlEx(callChatCode, obj, { ephemeral:true, raw:true, timeout:9000 });
+  if (r && r.error){ callStats.errors = (callStats.errors || 0) + 1; logCallData('err', r.error); }
+  return r || { error:'no response' };
 }
-function rtcOnConnected(){
+
+function ntEnqueue(url){
+  ntQueue.push(url);
+  while (ntQueue.length > 8){ const old = ntQueue.shift(); try { URL.revokeObjectURL(old); } catch(_){} callStats.errors++; }
+  ntPump();
+}
+function ntPump(){
+  if (ntPlaying || !ntQueue.length) return;
+  ntPlaying = true;
+  const url = ntQueue.shift();
+  let a;
+  try { a = new Audio(url); } catch(_){ ntPlaying = false; return; }
+  ntCurAudio = a;
+  a.onended = function(){ try { URL.revokeObjectURL(url); } catch(_){} ntPlaying = false; ntPump(); };
+  a.onerror = function(){ try { URL.revokeObjectURL(url); } catch(_){} callStats.errors++; ntPlaying = false; ntPump(); };
+  const p = a.play();
+  if (p && p.catch) p.catch(function(){ try { URL.revokeObjectURL(url); } catch(_){} ntPlaying = false; ntPump(); });
+}
+function ntStopPlayback(){
+  ntQueue.forEach(function(u){ try { URL.revokeObjectURL(u); } catch(_){} });
+  ntQueue = [];
+  if (ntCurAudio){ try { ntCurAudio.pause(); } catch(_){} ntCurAudio = null; }
+  ntPlaying = false;
+}
+function ntMarkConnected(){
   if (callConnected) return;
   callConnected = true;
   callStats.startedAt = Date.now();
-  if (typeof updateCallMessage === 'function') updateCallMessage({ status:'connected' });
   stopRingtone();
-  rtcSetState('In call');
-  const t = $('callTimerDisplay');
-  if (t) t.style.display = 'block';
+  const st = $('callStateText'); if (st) st.textContent = 'In call';
+  const tm = $('callTimerDisplay'); if (tm) tm.style.display = 'block';
   startCallTimer();
-  logCallData('note', 'connected, peer to peer');
-  const row = document.querySelector('#callDataDetails .cdp-row b');
-  if (row) row.textContent = 'WebRTC peer to peer';
-  const codec = $('callCodecInfo');
-  if (codec) codec.textContent = 'Opus 48 kHz';
-  const enc = $('callEncInfo');
-  if (enc) enc.textContent = 'DTLS SRTP';
+  if (typeof updateCallMessage === 'function') updateCallMessage({ status:'connected' });
+  logCallData('note', 'audio flowing over ntfy');
+  const tr = document.querySelector('#callDataDetails .cdp-row b'); if (tr) tr.textContent = 'ntfy.sh · encrypted frames';
+  const co = $('callCodecInfo'); if (co) co.textContent = 'Opus · ' + Math.round(NA_BPS/1000) + ' kbps';
+  const en = $('callEncInfo'); if (en) en.textContent = callPasscode ? 'AES-GCM (passcode)' : 'AES-GCM (session key)';
   updateCallDataUI();
-  rtcStartStats();
+}
+
+async function ntSendFrame(blob){
+  if (!ntKey || !callActive) return;
+  try {
+    const buf = await blob.arrayBuffer();
+    const d = await ntEncrypt(ntKey, new Uint8Array(buf));
+    const obj = { t:'a_frame', cid:ntCid, s:++ntSeq, m:ntMime, d:d };
+    if (JSON.stringify(obj).length > NA_MAX_PAYLOAD){ callStats.errors++; logCallData('err','frame too large, dropped'); return; }
+    const r = await ntSend(obj);
+    if (r && r.error){ logCallData('err','send failed'); return; }
+    callStats.sentBytes += buf.byteLength; callStats.sentChunks++;
+    updateCallDataUI();
+  } catch(err){ callStats.errors++; }
+}
+async function ntOnFrame(chat, from, c){
+  if (!callActive || !c || c.cid !== ntCid || !ntKey) return;
+  if (c.s && ntRxSeq && c.s <= ntRxSeq) return;
+  if (c.s) ntRxSeq = c.s;
+  try {
+    const bytes = await ntDecrypt(ntKey, c.d);
+    callStats.recvBytes += bytes.length; callStats.recvChunks++;
+    const blob = new Blob([bytes], { type: c.m || ntMime || 'audio/webm' });
+    ntEnqueue(URL.createObjectURL(blob));
+    if (!callConnected) ntMarkConnected();
+    updateCallDataUI();
+  } catch(err){ callStats.errors++; }
+}
+async function ntStartCapture(){
+  if (ntRec) return true;
+  try { ntStream = await acquireMic(); } catch(err){ toast(micErrorText(err), 6000); return false; }
+  try {
+    const opts = { audioBitsPerSecond: NA_BPS };
+    if (ntMime) opts.mimeType = ntMime;
+    ntRec = new MediaRecorder(ntStream, opts);
+  } catch(_){
+    try { ntRec = new MediaRecorder(ntStream); ntMime = ntRec.mimeType || ntMime; } catch(__){ toast('Recording is not supported here'); return false; }
+  }
+  ntRec.ondataavailable = function(e){ if (e.data && e.data.size) ntSendFrame(e.data); };
+  ntRec.onerror = function(){ callStats.errors++; logCallData('err','recorder error'); };
+  try { ntRec.start(NA_CHUNK); } catch(err){ toast('Could not start the microphone'); return false; }
+  logCallData('note','capture started');
+  return true;
+}
+function ntStopCapture(){
+  try { if (ntRec && ntRec.state !== 'inactive') ntRec.stop(); } catch(_){}
+  ntRec = null;
+  if (ntStream){ try { ntStream.getTracks().forEach(function(t){ t.stop(); }); } catch(_){} }
+  ntStream = null;
+  try { releaseMic(); } catch(_){}
 }
 function startCallTimer(){
   clearInterval(callTimerInterval);
   callSeconds = 0;
+  updateCallTimerUI();
   callTimerInterval = setInterval(function(){
     callSeconds++;
     updateCallTimerUI();
-    if (callSeconds >= MAX_CALL_SECONDS && !rtcMaxed){
-      rtcMaxed = true;
-      toast('Call limit reached, 5 minutes');
-      terminateCall(true, 'completed');
-    }
+    if (callSeconds >= 300){ terminateCall(true, 'completed'); }
   }, 1000);
-  updateCallTimerUI();
 }
 function updateCallTimerUI(){
-  const left = Math.max(0, MAX_CALL_SECONDS - callSeconds);
+  const left = Math.max(0, 300 - callSeconds);
   const m = String(Math.floor(left / 60)).padStart(2, '0');
   const s = String(left % 60).padStart(2, '0');
   const el = $('callTimerDisplay');
   if (el) el.textContent = m + ':' + s + ' left';
 }
-function handleCallIceSignal(chat, from, c){
-  if (!c || !c.c) return;
-  if (rtcPc && rtcPc.remoteDescription && rtcPc.remoteDescription.type){
-    rtcPc.addIceCandidate(c.c).catch(function(){});
-  } else {
-    rtcIce.push(c.c);
-  }
-}
-async function handleCallAnswerSignal(chat, from, c){
-  if (!rtcPc || callDirection !== 'out') return;
-  const desc = rtcCollect('answer', c);
-  if (!desc) return;
-  try {
-    await rtcPc.setRemoteDescription(rtcDesc(desc));
-    while (rtcIce.length){ try { await rtcPc.addIceCandidate(rtcIce.shift()); } catch(_){} }
-    rtcSetState('Connecting…');
-  } catch(err){
-    callError('could not apply the answer');
-  }
-}
+
 
 async function initiateCall(){
   if (callActive){ toast('You are already in a call'); return; }
@@ -3948,204 +3984,147 @@ async function initiateCall(){
   const chat = activeChat();
   if (!chat){ toast('Open a conversation first'); return; }
   if (chat.group){ toast('Calls work in one to one chats only'); return; }
-  if (!rtcSupported()){ toast('This browser cannot make calls. Use Chrome, Edge, Firefox or Safari on https.'); return; }
   if (!secureOriginOk()){ toast(micBlockedReason(), 6000); return; }
+  if (!window.MediaRecorder){ toast('This browser cannot record audio'); return; }
+  if (!window.crypto || !crypto.subtle){ toast('Encryption is not available here'); return; }
 
   let pass = null;
   if (lockArmed && vaultAvailable()){
-    pass = await askPasscode({ title:'Encrypted Call', desc:'Enter a passcode. The other side will be asked for it.', ok:'Start Call' });
+    pass = await askPasscode({ title:'Encrypted Call', desc:'Enter a passcode. The other side must enter the same one.', ok:'Start Call' });
     if (pass === null) return;
   }
+  if (!(await ntStartCapture())) return;
 
-  let stream;
-  try { stream = await acquireMic(); }
-  catch(err){ toast(micErrorText(err), 6000); return; }
+  ntCid = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  ntMime = (ntRec && ntRec.mimeType) || ntMime || ntPickMime();
+  let keyInfo = null;
+  if (pass){ ntKey = await ntPassKey(pass, ntCid); }
+  else { keyInfo = await ntNewKey(); ntKey = keyInfo.key; }
 
-  callChatCode = chat.code;
-  callDirection = 'out';
-  callPasscode = pass || null;
-  callIncomingEncrypted = false;
-  callActive = true;
-  callConnected = false;
-  callSeconds = 0;
-  rtcMaxed = false;
-  rtcOffer = null;
-  rtcIce = [];
-  rtcParts = {};
-  rtcLocal = stream;
-  rtcRemote = null;
-
-  resetCallDataUI();
+  callChatCode = chat.code; callDirection = 'out'; callPasscode = pass || null;
+  callActive = true; callConnected = false; callSeconds = 0; callStats.startedAt = 0;
+  callStats.sentBytes = 0; callStats.recvBytes = 0; callStats.sentChunks = 0; callStats.recvChunks = 0; callStats.errors = 0;
+  resetCallDataUI(); callMsg = null; addCallMessage('out'); updateCallDataUI();
   prepareCallUI(true);
   $('callScreen').classList.add('show');
   $('callPeerName').textContent = chat.title || chat.code;
   $('callAvatar').textContent = avatarText(chat.title || chat.code);
-  rtcSetState(callPasscode ? 'Calling, encrypted' : 'Calling');
+  $('callStateText').textContent = 'Calling…';
   $('callAcceptBtn').style.display = 'none';
   $('callTimerDisplay').style.display = 'none';
-  updateCallTimerUI();
-  callMsg = null;
-  addCallMessage('out');
-  updateCallDataUI();
   playRingtone();
 
-  try {
-    rtcCreatePeer();
-    const offer = await rtcPc.createOffer({ offerToReceiveAudio:true, offerToReceiveVideo:false });
-    await rtcPc.setLocalDescription(offer);
-    rtcOffer = rtcPc.localDescription;
-    rtcSendDesc('w_offer', rtcOffer);
-    logCallData('out', 'offer sent');
-  } catch(err){
-    callError('could not start the call');
-    toast('Could not start the call');
+  const r = await ntSend({ t:'a_offer', cid:ntCid, k:keyInfo ? bufToB64(keyInfo.raw) : null, p:pass ? 1 : 0, m:ntMime });
+  if (r && r.error){
+    $('callStateText').textContent = 'Could not reach the other side';
+    toast('Could not reach the other side');
     terminateCall(false, 'failed');
     return;
   }
-
-  clearTimeout(callTimeout);
-  callTimeout = setTimeout(function(){
-    if (callActive && !callConnected){
-      toast('No answer');
-      terminateCall(true, 'missed');
-    }
+  clearTimeout(ntTimeout);
+  ntTimeout = setTimeout(function(){
+    if (callActive && !callConnected){ toast('No answer'); terminateCall(true, 'missed'); }
   }, 45000);
 }
 
-function handleCallOfferSignal(chat, from, c){
-  const desc = rtcCollect('offer', c);
-  if (!desc) return;
-  if (from === state.name && chat.code !== callChatCode) return;
-
-  if (callActive){
-    if (callChatCode === chat.code && callDirection === 'in' && !callConnected){ rtcOffer = desc; return; }
-    sendControlEx(chat.code, { t:'v_reject' }, { ephemeral:true, raw:true });
-    return;
-  }
-
-  callChatCode = chat.code;
-  callDirection = 'in';
-  callIncomingEncrypted = !!c.pass;
-  callPasscode = null;
-  callActive = true;
-  callConnected = false;
-  callSeconds = 0;
-  rtcMaxed = false;
-  rtcOffer = desc;
-  rtcIce = [];
-  rtcParts = {};
-  rtcLocal = null;
-  rtcRemote = null;
-
-  resetCallDataUI();
+async function handleCallOfferSignal(chat, from, c){
+  if (callActive){ sendControlEx(chat.code, { t:'a_busy' }, { ephemeral:true, raw:true }); return; }
+  callChatCode = chat.code; callDirection = 'in';
+  callActive = true; callConnected = false; callSeconds = 0;
+  callStats.startedAt = 0; callStats.sentBytes = 0; callStats.recvBytes = 0;
+  callStats.sentChunks = 0; callStats.recvChunks = 0; callStats.errors = 0;
+  ntCid = c.cid; ntMime = c.m || ''; ntOffer = c; ntKey = null; ntSeq = 0; ntRxSeq = 0;
+  callIncomingEncrypted = !!c.p; callPasscode = null;
+  ntStopPlayback(); resetCallDataUI(); callMsg = null; addCallMessage('in'); updateCallDataUI();
   prepareCallUI(true);
   $('callScreen').classList.add('show');
   $('callPeerName').textContent = chat.title || chat.code;
   $('callAvatar').textContent = avatarText(chat.title || chat.code);
-  rtcSetState('Incoming call from ' + from);
+  $('callStateText').textContent = 'Incoming call from ' + from;
   $('callAcceptBtn').style.display = 'flex';
   $('callTimerDisplay').style.display = 'none';
-  updateCallTimerUI();
-  callMsg = null;
-  addCallMessage('in');
-  updateCallDataUI();
   playRingtone();
-
-  clearTimeout(callTimeout);
-  callTimeout = setTimeout(function(){
-    if (callActive && !callConnected){
-      toast('Missed call');
-      terminateCall(true, 'missed');
-    }
+  clearTimeout(ntTimeout);
+  ntTimeout = setTimeout(function(){
+    if (callActive && !callConnected){ toast('Missed call'); terminateCall(true, 'missed'); }
   }, 45000);
 }
 
 async function acceptCall(){
-  if (!callActive || callDirection !== 'in' || !rtcOffer) return;
-  let stream;
-  try { stream = await acquireMic(); }
-  catch(err){ toast(micErrorText(err), 6000); terminateCall(true, 'failed'); return; }
-
-  rtcLocal = stream;
-  try {
-    rtcCreatePeer();
-    await rtcPc.setRemoteDescription(rtcDesc(rtcOffer));
-    while (rtcIce.length){ try { await rtcPc.addIceCandidate(rtcIce.shift()); } catch(_){} }
-    const answer = await rtcPc.createAnswer();
-    await rtcPc.setLocalDescription(answer);
-    rtcSendDesc('w_answer', rtcPc.localDescription);
-    stopRingtone();
-    rtcSetState('Connecting…');
-    logCallData('in', 'answer sent');
-  } catch(err){
-    callError('could not answer the call');
-    terminateCall(true, 'failed');
+  if (!callActive || callDirection !== 'in' || !ntOffer) return;
+  $('callAcceptBtn').style.display = 'none';
+  let pass = null;
+  if (callIncomingEncrypted){
+    pass = await askPasscode({ title:'Encrypted Call', desc:'Enter the passcode from the caller.', ok:'Answer' });
+    if (pass === null){ terminateCall(true, 'declined'); return; }
+    callPasscode = pass;
   }
+  try {
+    ntKey = pass ? await ntPassKey(pass, ntCid) : await ntImportKey(ntOffer.k);
+  } catch(_){ toast('This call cannot be unlocked'); terminateCall(true, 'failed'); return; }
+  stopRingtone();
+  $('callStateText').textContent = 'Connecting…';
+  await ntSend({ t:'a_accept', cid:ntCid });
+  if (!(await ntStartCapture())){ terminateCall(true, 'failed'); return; }
+  ntMarkConnected();
 }
 
-function handleIncomingCallOffer(){ rtcSend({ t:'v_reject' }); }
-function handleCallAccepted(){ /* answers arrive as w_answer */ }
-function handleCallRejected(chat, from){
-  if (!callActive) return;
+async function ntOnAccept(chat, c){
+  if (!callActive || callDirection !== 'out' || c.cid !== ntCid) return;
+  if (!ntRec && !(await ntStartCapture())){ terminateCall(true, 'failed'); return; }
+  stopRingtone();
+  $('callStateText').textContent = 'Connecting…';
+  ntMarkConnected();
+}
+function ntOnReject(chat, c){
+  if (!callActive || c.cid !== ntCid) return;
   toast('Call declined');
   terminateCall(false, 'declined');
 }
-function handleCallEndSignal(){
+function ntOnBusy(chat, c){
   if (!callActive) return;
-  toast('Call ended');
-  terminateCall(false, callConnected ? 'completed' : 'ended');
+  toast('The other side is in a call');
+  terminateCall(false, 'declined');
 }
-function receiveCallAudio(){ /* legacy path retired */ }
-function receiveVoiceChunk(){ /* legacy path retired */ }
+function ntOnEnd(chat, c){
+  if (!callActive || (c.cid && c.cid !== ntCid)) return;
+  terminateCall(false, callConnected ? 'completed' : 'cancelled');
+}
 
 function terminateCall(sendSignal, status){
   const wasActive = callActive;
   const wasConnected = callConnected;
-  const chatCode = callChatCode;
-  if (sendSignal && chatCode) rtcSend({ t:'v_end' });
-
-  try {
-    if (rtcPc){
-      rtcPc.onicecandidate = null;
-      rtcPc.ontrack = null;
-      rtcPc.onconnectionstatechange = null;
-      rtcPc.close();
-    }
-  } catch(_){}
-  rtcPc = null;
-
-  if (rtcLocal){
-    try { rtcLocal.getTracks().forEach(function(t){ t.stop(); }); } catch(_){}
-    rtcLocal = null;
+  if (sendSignal !== false && ntCid && callChatCode){
+    const decline = (callDirection === 'in' && !callConnected);
+    sendControlEx(callChatCode, { t: decline ? 'a_reject' : 'a_end', cid:ntCid }, { ephemeral:true, raw:true });
   }
-  try { stopCallCapture(); } catch(_){}
-  try { releaseMic(); } catch(_){}
-
+  ntStopCapture();
+  ntStopPlayback();
   clearInterval(callTimerInterval); callTimerInterval = null;
-  clearInterval(rtcStatsTimer); rtcStatsTimer = null;
-  clearTimeout(callTimeout); callTimeout = null;
+  clearTimeout(ntTimeout); ntTimeout = null;
   stopRingtone();
-
-  callActive = false;
-  callConnected = false;
-  callSeconds = 0;
-  rtcOffer = null;
-  rtcIce = [];
-  rtcParts = {};
-
-  const a = $('remoteAudio');
-  if (a){ try { a.pause(); } catch(_){} a.srcObject = null; }
-  $('callScreen').classList.remove('show', 'exp-call-ui', 'ringing');
-  $('callAcceptBtn').style.display = 'none';
-  const t = $('callTimerDisplay');
-  if (t) t.style.display = 'none';
-
+  callActive = false; callConnected = false; callSeconds = 0;
+  ntKey = null; ntOffer = null; ntSeq = 0; ntRxSeq = 0; ntCid = null;
+  const a = $('remoteAudio'); if (a) a.srcObject = null;
+  const cs = $('callScreen'); if (cs) cs.classList.remove('show', 'exp-call-ui', 'ringing');
+  const ab = $('callAcceptBtn'); if (ab) ab.style.display = 'none';
+  const tm = $('callTimerDisplay'); if (tm) tm.style.display = 'none';
   if (wasActive){
     finalizeCallMessage(status || (wasConnected ? 'completed' : 'missed'));
   }
   callChatCode = null;
   updateCallDataUI();
 }
+
+function handleIncomingCallOffer(chat, from){
+  const code = chat && chat.code;
+  if (code) sendControlEx(code, { t:'v_reject' }, { ephemeral:true, raw:true });
+}
+function handleCallAccepted(){}
+function handleCallRejected(){ if (callActive) terminateCall(false, 'declined'); }
+function handleCallEndSignal(){ if (callActive) terminateCall(false, callConnected ? 'completed' : 'cancelled'); }
+function receiveCallAudio(){}
+function receiveVoiceChunk(){}
 
   renderChatList();
   renderMessages();
@@ -4160,9 +4139,11 @@ function terminateCall(sendSignal, status){
        location.hostname === '[::1]'));
   if (!supportedOrigin) return;
 
-  navigator.serviceWorker.register('./sw.js').catch(error => {
-    console.warn('Service worker registration skipped:', error);
-  });
+  // Service worker disabled. It only proxied fetches and could request file URLs,
+  // which browsers block on an https page.
+  navigator.serviceWorker.getRegistrations().then(function(rs){
+    rs.forEach(function(r){ r.unregister(); });
+  }).catch(function(){});
 })();
 </script>
 </body>
