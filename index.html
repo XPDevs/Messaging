@@ -563,7 +563,7 @@
   .qr-wrap .qr-code{font-size:1.5rem;font-weight:800;letter-spacing:.25em;margin-top:10px}
   #scanVideo{width:100%;max-height:52vh;border-radius:16px;background:#000;object-fit:cover}
 
-  /* ===== Fullscreen Calling Screen ===== */
+  /* ===== Standard Calling Screen ===== */
   .call-screen{
     position:fixed;inset:0;background:var(--bg);z-index:30000;
     display:none;flex-direction:column;align-items:center;justify-content:space-between;
@@ -580,6 +580,103 @@
   .call-action-btn.end{background:#dc3545}
   .call-action-btn.accept{background:#28a645}
   .call-action-btn:hover{transform:scale(1.1);filter:brightness(0.9)}
+
+  /* ===== Experimental Realistic Mobile Call UI ===== */
+  .call-screen.exp-call-ui {
+    background: radial-gradient(circle at center, #1e2430 0%, #0b0d12 100%);
+    color: #ffffff;
+    justify-content: space-between;
+    padding: calc(30px + env(safe-area-inset-top)) 24px calc(40px + env(safe-area-inset-bottom));
+  }
+  .call-screen.exp-call-ui .call-user-info {
+    margin-top: 20px;
+  }
+  .call-screen.exp-call-ui .call-name {
+    font-size: 1.8rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: #ffffff;
+  }
+  .call-screen.exp-call-ui .call-state-text {
+    font-size: 1rem;
+    color: rgba(255,255,255,0.65);
+  }
+  .call-screen.exp-call-ui .call-timer-display {
+    font-size: 1.4rem;
+    font-weight: 500;
+    color: #4cd964;
+    letter-spacing: 0.08em;
+  }
+  .call-screen.exp-call-ui .call-avatar-wrapper {
+    position: relative;
+    margin: 20px 0;
+  }
+  .call-screen.exp-call-ui .call-avatar {
+    width: 120px;
+    height: 120px;
+    font-size: 42px;
+    border: 3px solid rgba(255,255,255,0.15);
+    background: linear-gradient(135deg, #2c3e50, #4ca1af);
+    position: relative;
+    z-index: 2;
+  }
+  .call-screen.exp-call-ui.ringing .call-avatar-wrapper::before,
+  .call-screen.exp-call-ui.ringing .call-avatar-wrapper::after {
+    content: "";
+    position: absolute;
+    inset: -15px;
+    border-radius: 50%;
+    background: rgba(26,115,232,0.3);
+    animation: pulseRing 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+    z-index: 1;
+  }
+  .call-screen.exp-call-ui.ringing .call-avatar-wrapper::after {
+    animation-delay: 0.6s;
+  }
+  @keyframes pulseRing {
+    0% { transform: scale(0.8); opacity: 0.8; }
+    100% { transform: scale(1.6); opacity: 0; }
+  }
+
+  /* Realistic In-Call Grid Controls */
+  .exp-grid-actions {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px 24px;
+    width: 100%;
+    max-width: 320px;
+    margin-bottom: 24px;
+  }
+  .exp-grid-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    background: transparent;
+    border: none;
+    color: #fff;
+    font-size: 12px;
+    opacity: 0.9;
+  }
+  .exp-grid-btn .icon-circle {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.12);
+    backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+  }
+  .exp-grid-btn:hover .icon-circle, .exp-grid-btn.active .icon-circle {
+    background: rgba(255,255,255,0.3);
+    transform: scale(1.05);
+  }
+  .exp-grid-btn.active .icon-circle {
+    background: #ffffff;
+    color: #000000;
+  }
 
   @keyframes messagePop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
   @keyframes flash{0%{box-shadow:0 0 0 0 rgba(var(--primary-rgb),0.5)}100%{box-shadow:0 0 0 14px rgba(var(--primary-rgb),0)}}
@@ -657,12 +754,37 @@
 <!-- ===================== FULLSCREEN CALL SCREEN ===================== -->
 <div class="call-screen" id="callScreen">
   <div class="call-user-info">
-    <div class="call-avatar" id="callAvatar">?</div>
+    <div class="call-avatar-wrapper">
+      <div class="call-avatar" id="callAvatar">?</div>
+    </div>
     <div class="call-name" id="callPeerName">Calling...</div>
     <div class="call-state-text" id="callStateText">Ringing...</div>
     <div class="call-timer-display" id="callTimerDisplay" style="display:none">00:00 / 05:00</div>
   </div>
   <audio id="remoteAudio" autoplay playsinline></audio>
+
+  <!-- Experimental Call Controls Pad -->
+  <div class="exp-grid-actions" id="expGridActions" style="display:none">
+    <button class="exp-grid-btn" id="expMuteBtn">
+      <div class="icon-circle">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+      </div>
+      <span>mute</span>
+    </button>
+    <button class="exp-grid-btn" id="expKeypadBtn">
+      <div class="icon-circle">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="4" height="4" rx="1"/><rect x="10" y="4" width="4" height="4" rx="1"/><rect x="16" y="4" width="4" height="4" rx="1"/><rect x="4" y="10" width="4" height="4" rx="1"/><rect x="10" y="10" width="4" height="4" rx="1"/><rect x="16" y="10" width="4" height="4" rx="1"/><rect x="10" y="16" width="4" height="4" rx="1"/></svg>
+      </div>
+      <span>keypad</span>
+    </button>
+    <button class="exp-grid-btn" id="expSpeakerBtn">
+      <div class="icon-circle">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+      </div>
+      <span>audio</span>
+    </button>
+  </div>
+
   <div class="call-actions-row">
     <button class="call-action-btn accept" id="callAcceptBtn" style="display:none" title="Accept Call">
       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.2 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72l.45 2.7a2 2 0 0 1-.57 1.73L7.2 9.94a16 16 0 0 0 6 6l1.79-1.79a2 2 0 0 1 1.73-.57l2.7.45a2 2 0 0 1 1.58 1.89z"/></svg>
@@ -819,7 +941,6 @@
   </div>
 </div>
 
-
 <!-- Contacts and groups -->
 <div class="modal" id="peopleModal">
   <div class="modal-content">
@@ -935,8 +1056,15 @@
       <div class="field field-row"><label>Sound &amp; vibration</label>
         <label class="toggle"><input type="checkbox" id="soundToggle"><span class="slider"></span></label>
       </div>
-      <div class="field"><label>Notifications</label><button class="settings-btn" id="notifBtn">Enable browser notifications</button><p>Browser notifications work while this page is running. Background delivery depends on browser and operating system support.</p></div>
+      <div class="field"><label>Notifications</label><button class="settings-btn" id="notifBtn">Enable browser notifications</button><p>Browser notifications work while this page is running.</p></div>
       <div class="field field-row"><label>Show emoji in interface</label><label class="toggle"><input type="checkbox" id="uiEmojiToggle"><span class="slider"></span></label></div>
+      
+      <!-- Experimental Features Toggle -->
+      <div class="field field-row" style="border-top:1px dashed var(--border);padding-top:12px;margin-top:4px">
+        <label>Experimental features (Realistic Calling UI &amp; Voice)</label>
+        <label class="toggle"><input type="checkbox" id="experimentalToggle"><span class="slider"></span></label>
+      </div>
+
       <div class="field"><label>Danger zone</label>
         <button class="settings-btn danger" id="regenBtn">Generate new code</button>
         <button class="settings-btn delete" id="resetBtn" style="margin-top:8px">Reset device</button>
@@ -950,11 +1078,9 @@
 <div class="help-overlay" id="helpOverlay">
   <div class="help-overlay-content">
     <h3>How it works</h3>
-    <p>Your eleven digit number identifies your ntfy topic. Share it only with people you trust. Anyone who knows the number can subscribe to that public topic.</p>
-    <p><b>Rich messages</b>, photos, voice notes, files and location. Tap the buttons under the composer. Everything is delivered through ntfy.</p>
-    <p><b>Reactions, replies, edit &amp; delete</b>, hover a message (or long-press on mobile) for actions. Replies quote the original; delete removes it for everyone.</p>
-    <p><b>Vault Lock </b>, arm the lock, then send. Text or photo is encrypted on your device with a passcode, so even someone with your code sees only ciphertext.</p>
-    <p><b>Urgent </b>, arm it to send a high-priority message that vibrates the other phone.</p>
+    <p>Your eleven digit number identifies your ntfy topic. Share it only with people you trust.</p>
+    <p><b>Rich messages</b>, photos, voice notes, files and location. Everything is delivered through ntfy.</p>
+    <p><b>Vault Lock </b>, encrypt text or photo on your device with a passcode.</p>
     <button class="help-overlay-close" id="helpClose">Got it</button>
   </div>
 </div>
@@ -969,10 +1095,10 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
 <script>
   const $ = id => document.getElementById(id);
 
-  /* ---------- wire markers (ASCII only, HTTP headers can't carry unicode) ---------- */
   const VAULT_PREFIX = 'VLT1|';
   const ATT_PREFIX   = 'ATT1|';
   const CTL_MAGIC    = '@@ntfy#';
@@ -988,7 +1114,8 @@
     accent: localStorage.getItem('ntfy_accent') || '#1a73e8',
     sound: localStorage.getItem('ntfy_sound') !== '0',
     contacts: (() => { try { const v = JSON.parse(localStorage.getItem('ntfy_contacts') || '[]'); return Array.isArray(v) ? v : []; } catch (_) { return []; } })(),
-    showUiEmoji: localStorage.getItem('ntfy_ui_emoji') === '1'
+    showUiEmoji: localStorage.getItem('ntfy_ui_emoji') === '1',
+    experimental: localStorage.getItem('ntfy_experimental') === '1'
   };
   const seenIds = new Set();
   const streams = {};
@@ -998,12 +1125,10 @@
   let urgentArmed = false;
   let replyTarget = null;
   let menuTarget = null;
-  let forwardText = null;
   let scanStream = null, scanTimer = null;
   let mediaRecorder = null, recChunks = [], recTimer = null, recStart = 0;
   let soundCtx = null, lastSound = 0;
 
-  /* ---------- basic utils ---------- */
   function makeCode(){ return String(Math.floor(10000000000 + Math.random() * 90000000000)); }
   function ownCode(){
     let c = localStorage.getItem('ntfy_code');
@@ -1050,7 +1175,7 @@
     return (n/1048576).toFixed(1) + ' MB';
   }
 
-  /* ---------- base64 (UTF-8 safe) ---------- */
+  /* ---------- base64 / crypto ---------- */
   function b64EncodeUtf8(s){
     const bytes = new TextEncoder().encode(s);
     let bin = ''; for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
@@ -1062,7 +1187,6 @@
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     return new TextDecoder().decode(bytes);
   }
-  function safeDecode(b){ try { return b64DecodeUtf8(b); } catch(_) { return ''; } }
   function bufToB64(buf){
     const bytes = new Uint8Array(buf);
     let bin = ''; for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
@@ -1075,7 +1199,6 @@
     return bytes;
   }
 
-  /* ---------- Vault Lock crypto (AES-GCM + PBKDF2) ---------- */
   function vaultAvailable(){ return !!(window.crypto && window.crypto.subtle) && window.isSecureContext !== false; }
   async function vaultKey(pass, salt){
     const enc = new TextEncoder();
@@ -1112,7 +1235,6 @@
     return crypto.subtle.decrypt({ name:'AES-GCM', iv }, key, ctBuf);
   }
 
-  /* ---------- image / media helpers ---------- */
   function fileToDataUrl(file){
     return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
   }
@@ -1147,7 +1269,7 @@
     if (raw.slice(0, ATT_PREFIX.length) !== ATT_PREFIX) return null;
     try { return JSON.parse(b64DecodeUtf8(raw.slice(ATT_PREFIX.length))); } catch(_) { return null; }
   }
-  /* ---------- chat bookkeeping ---------- */
+
   function ensureOwnChat(){
     const code = ownCode();
     state.chats.forEach(x => { if (x.own && x.code !== code) x.own = false; });
@@ -1162,7 +1284,6 @@
     state.chats.forEach(c => c.messages.forEach(m => { if (m.eventId) seenIds.add(m.eventId); }));
   }
 
-  /* ---------- theme / accent ---------- */
   const ACCENTS = ['#1a73e8','#28a645','#8e44ad','#e53935','#f39c12','#00bcd4','#e91e63'];
   function applyTheme(){
     if (localStorage.getItem('ntfy_theme') === 'light') document.body.classList.remove('dark');
@@ -1175,7 +1296,6 @@
     document.documentElement.style.setProperty('--primary-rgb', [(n>>16)&255,(n>>8)&255,n&255].join(','));
   }
 
-  /* ---------- small DOM helper ---------- */
   function el(tag, cls, text){
     const e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -1183,7 +1303,6 @@
     return e;
   }
 
-  /* ---------- chat list + global search ---------- */
   function renderChatList(){
     const list = $('chatList');
     list.innerHTML = '';
@@ -1269,7 +1388,6 @@
     });
   }
 
-  /* ---------- message content builders ---------- */
   function vaultCard(m){
     const card = el('div', 'vault');
     card.appendChild(el('div', 'vault-icon', '🔒'));
@@ -1347,7 +1465,6 @@
     row.dataset.id = m.id;
     row.appendChild(buildBubble(m));
 
-    // reactions
     const keys = m.reactions ? Object.keys(m.reactions) : [];
     if (keys.length){
       const rowR = el('div', 'reactions');
@@ -1361,7 +1478,6 @@
       row.appendChild(rowR);
     }
 
-    // meta
     const meta = el('div', 'message-meta');
     meta.appendChild(el('span', null, m.sender || (m.mine ? 'You' : 'Remote')));
     meta.appendChild(el('span', null, '·'));
@@ -1376,7 +1492,6 @@
     }
     row.appendChild(meta);
 
-    // hover actions
     const actions = el('div', 'message-actions');
     const reactBtn = el('button', 'action-btn');
     reactBtn.title = 'React';
@@ -1393,7 +1508,6 @@
     actions.appendChild(reactBtn); actions.appendChild(replyBtn); actions.appendChild(moreBtn);
     row.appendChild(actions);
 
-    // long-press (mobile) + right-click (desktop)
     let pressTimer = null, moved = false;
     row.addEventListener('touchstart', () => { moved = false; pressTimer = setTimeout(() => { if (!moved) openMsgMenu(m); }, 480); }, { passive: true });
     row.addEventListener('touchmove', () => { moved = true; if (pressTimer) clearTimeout(pressTimer); }, { passive: true });
@@ -1475,7 +1589,6 @@
     typingTimers[code] = setTimeout(() => { delete typingState[code]; if (state.activeCode === code) updateTyping(); }, 3500);
   }
 
-  /* ---------- lightbox ---------- */
   function openLightbox(src, name){
     $('lightboxImg').src = src;
     $('lightboxDownload').dataset.name = name || 'image';
@@ -1496,7 +1609,7 @@
       setTimeout(() => URL.revokeObjectURL(url), 5000);
     } catch(_){ toast('Could not save'); }
   }
-  /* ---------- misc (used above, defined here) ---------- */
+
   function toast(msg){
     const t = $('toast');
     t.textContent = msg;
@@ -1546,7 +1659,6 @@
     t.style.height = Math.min(t.scrollHeight, 130) + 'px';
   }
 
-  /* ---------- ntfy transport ---------- */
   function ntfyUrl(code){ return 'https://ntfy.sh/' + encodeURIComponent(code); }
   function baseHeaders(){ const h = { 'Title': ownCode() }; if (urgentArmed) h['Priority'] = 'urgent'; return h; }
 
@@ -1577,11 +1689,8 @@
     return { name, text };
   }
 
-  /* ---------- streaming (Global background polling / SSE for ALL chats) ---------- */
   const globalStreams = {};
-  function subscribeAll(){
-    state.chats.forEach(c => subscribe(c.code));
-  }
+  function subscribeAll(){ state.chats.forEach(c => subscribe(c.code)); }
   function subscribe(code){
     if (globalStreams[code]) return;
     const es = new EventSource('https://ntfy.sh/' + encodeURIComponent(code) + '/sse');
@@ -1596,13 +1705,10 @@
     chat.messages.push(msg);
     const focused = state.activeCode === chat.code && document.visibilityState === 'visible';
     if (!focused) chat.unread = (chat.unread || 0) + 1;
-    saveChats();
-    renderChatList();
+    saveChats(); renderChatList();
     if (state.activeCode === chat.code) renderMessages();
     if (focused && msg.eventId) sendControl(chat.code, { t:'s', id: msg.eventId }, true);
   }
-
-  function rerender(){ renderChatList(); renderMessages(); }
 
   function handleControl(chat, from, c, base){
     const find = id => chat.messages.find(m => m.eventId === id);
@@ -1620,14 +1726,6 @@
       case 'd': { const n = chat.messages.length; chat.messages = chat.messages.filter(m => m.eventId !== c.id); changed = chat.messages.length !== n; break; }
       case 't': { setTyping(chat.code, from); return; }
       case 's': { const m = find(c.id); if (m){ m.read = true; changed = true; } break; }
-      case 'm': {
-        const msg = { id:newId(), eventId:base.eventId, mine:false, status:'received', time:base.time, urgent:base.urgent, sender:from, kind:'text', text:c.m || '', quote:c.q || null };
-        deliver(chat, msg); notifyMsg(msg); return;
-      }
-      case 'l': {
-        const msg = { id:newId(), eventId:base.eventId, mine:false, status:'received', time:base.time, sender:from, kind:'location', lat:c.lat, lng:c.lng, acc:c.acc };
-        deliver(chat, msg); notifyMsg(msg); return;
-      }
       case 'v_chunk': {
         if (typeof receiveVoiceChunk === 'function') receiveVoiceChunk(chat, from, c.data, c.pass);
         return;
@@ -1653,11 +1751,8 @@
 
     let chat = state.chats.find(c => c.code === topic);
     if (!chat) {
-      // Auto-discover chat if incoming message belongs to a valid topic code
       chat = { code: topic, title: 'Chat ' + topic, messages: [], unread: 0, own: false };
-      state.chats.push(chat);
-      saveChats();
-      renderChatList();
+      state.chats.push(chat); saveChats(); renderChatList();
     }
     if (ev.id) seenIds.add(ev.id);
 
@@ -1709,7 +1804,6 @@
     notifyMsg(msg);
   }
 
-  /* ---------- media caching (survives ntfy ~3h expiry) ---------- */
   async function cacheMedia(chat, m){
     if (m.cached || !m.attachUrl) return;
     try {
@@ -1729,7 +1823,6 @@
     } catch(_){}
   }
 
-  /* ---------- message actions ---------- */
   function myReactionToggle(m, e){
     if (!m.eventId){ toast('Still sending…'); return; }
     m.reactions = m.reactions || {};
@@ -1783,7 +1876,6 @@
     openModal('msgMenuModal');
   }
 
-  /* ---------- sending: text ---------- */
   async function sendMessage(){
     const input = $('messageInput');
     const text = input.value.trim();
@@ -1794,7 +1886,7 @@
     input.value = ''; autoResize(); cancelReply();
 
     if (lockArmed && vaultAvailable() && !quote){
-      const pass = await askPasscode({ title:'Lock message', desc:'Set a passcode. The recipient needs it to read this, ntfy only sees ciphertext.', ok:'Lock & send' });
+      const pass = await askPasscode({ title:'Lock message', desc:'Set a passcode.', ok:'Lock & send' });
       if (pass === null) return;
       const payload = await vaultEncryptText(pass, text);
       const msg = { id:newId(), text, sender:name, time:Date.now(), mine:true, status:'sending', locked:true, kind:'text' };
@@ -1828,7 +1920,6 @@
     saveChats(); rerender();
   }
 
-  /* ---------- sending: attachments (image / file / voice) ---------- */
   async function sendAttachment(opts){
     const chat = activeChat(); if (!chat) return;
     const name = state.name;
@@ -1844,7 +1935,7 @@
       let res;
       if (lockArmed && vaultAvailable()){
         const pass = await askPasscode({ title:'Lock ' + (opts.kind === 'audio' ? 'voice note' : opts.kind),
-          desc:'Set a passcode. This is encrypted before upload, ntfy never sees it.', ok:'Lock & send' });
+          desc:'Set a passcode.', ok:'Lock & send' });
         if (pass === null){ chat.messages = chat.messages.filter(x => x !== msg); saveChats(); rerender(); return; }
         const buf = await opts.blob.arrayBuffer();
         const enc = await vaultEncryptBytes(pass, buf);
@@ -1882,7 +1973,6 @@
     }
   }
 
-  /* ---------- voice recording ---------- */
   let recSend = true;
   function recClock(ms){ const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
   function stopRecUI(){
@@ -1892,7 +1982,7 @@
     $('recTime').textContent = '0:00';
   }
   async function startRecording(){
-    if (!navigator.mediaDevices || !window.MediaRecorder){ toast('Recording not supported on this device'); return; }
+    if (!navigator.mediaDevices || !window.MediaRecorder){ toast('Recording not supported'); return; }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
       mediaRecorder = new MediaRecorder(stream);
@@ -1926,7 +2016,6 @@
     await sendAttachment({ blob, kind:'audio', fileName:'voice-' + Date.now() + '.' + ext, mime });
   }
 
-  /* ---------- location ---------- */
   function shareLocation(){
     if (!navigator.geolocation){ toast('Location not supported'); return; }
     toast('Getting your location…');
@@ -1939,10 +2028,9 @@
     }, () => toast('Location permission denied'), { enableHighAccuracy:true, timeout:10000 });
   }
 
-  /* ---------- vault unlock ---------- */
   async function unlockMessage(m){
-    if (!vaultAvailable()){ toast('Encryption unavailable, open over http://localhost'); return; }
-    const pass = await askPasscode({ title:'Unlock', desc:'Enter the passcode to read this message.', ok:'Unlock' });
+    if (!vaultAvailable()){ toast('Encryption unavailable'); return; }
+    const pass = await askPasscode({ title:'Unlock', desc:'Enter passcode.', ok:'Unlock' });
     if (pass === null) return;
     try {
       if (m.kind === 'image' || m.kind === 'audio' || m.kind === 'file'){
@@ -1960,9 +2048,9 @@
       }
       m.locked = false; delete m.cipher;
       saveChats(); rerender(); toast('Unlocked');
-    } catch(err){ toast('Wrong passcode or the media expired'); }
+    } catch(err){ toast('Wrong passcode'); }
   }
-  /* ---------- passcode modal ---------- */
+
   let passResolve = null;
   function askPasscode(opts){
     opts = opts || {};
@@ -1982,7 +2070,6 @@
     if (r) r(val);
   }
 
-  /* ---------- navigation ---------- */
   function openChat(code){
     state.activeCode = code;
     const c = state.chats.find(x => x.code === code);
@@ -1995,7 +2082,6 @@
     $('sidebarBackdrop').classList.remove('show');
   }
 
-  /* ---------- join / onboarding ---------- */
   function showJoin(){
     $('joinScreen').classList.remove('hidden');
     $('appContainer').classList.add('blurred');
@@ -2034,7 +2120,7 @@
     openModal('scanModal');
     const video = $('scanVideo'), note = $('scanNote');
     note.textContent = 'Point at a QR code';
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ note.textContent = 'Camera not available, type the code below.'; return; }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ note.textContent = 'Camera not available'; return; }
     try {
       scanStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' } });
       video.srcObject = scanStream;
@@ -2051,10 +2137,8 @@
             }
           } catch(_){}
         }, 600);
-      } else {
-        note.textContent = 'Scanning not supported here, type the code below.';
-      }
-    } catch(err){ note.textContent = 'Camera permission denied, type the code below.'; }
+      } else { note.textContent = 'Scanning not supported'; }
+    } catch(err){ note.textContent = 'Camera permission denied'; }
   }
   function closeScanner(){
     clearInterval(scanTimer); scanTimer = null;
@@ -2063,7 +2147,6 @@
     closeModal('scanModal');
   }
 
-  /* ---------- composer hint ---------- */
   function updateComposerHint(){
     const parts = [];
     if (lockArmed) parts.push('Vault Lock on');
@@ -2081,7 +2164,6 @@
     autoResize();
   }
 
-  /* ---------- contacts and group conversations ---------- */
   function saveContacts(){
     localStorage.setItem('ntfy_contacts', JSON.stringify(state.contacts));
   }
@@ -2113,7 +2195,7 @@
   function renderGroupContacts(){
     const box = $('groupContacts');
     box.innerHTML = '';
-    if (!state.contacts.length){ box.appendChild(el('div','empty-note','Add contacts first, or share the group number manually.')); return; }
+    if (!state.contacts.length){ box.appendChild(el('div','empty-note','Add contacts first.')); return; }
     state.contacts.forEach(contact => {
       const label = el('label','field-row');
       const text = el('span',null,contact.name + ' (' + contact.number + ')');
@@ -2130,12 +2212,12 @@
     const chat = { code, title:name, messages:[], unread:0, own:false, group:true, members };
     state.chats.push(chat);
     saveChats(); subscribe(code); openChat(code);
-    copyText(buildJoinLink(code), 'Group created. Invite link copied');
+    copyText(buildJoinLink(code), 'Group created');
     $('groupName').value = '';
     closeModal('groupModal');
   }
 
-  /* ---------- Fullscreen Voice Call Screen & ringtone.mp3 ---------- */
+  /* ---------- Fullscreen Calling & Ringtone Implementation ---------- */
   let callRecorder = null;
   let callAudioStream = null;
   let callActive = false;
@@ -2147,13 +2229,20 @@
   const ringtoneAudio = new Audio('ringtone.mp3');
   ringtoneAudio.loop = true;
 
-  function playRingtone(){
-    ringtoneAudio.currentTime = 0;
-    ringtoneAudio.play().catch(() => {});
-  }
-  function stopRingtone(){
-    ringtoneAudio.pause();
-    ringtoneAudio.currentTime = 0;
+  function playRingtone(){ ringtoneAudio.currentTime = 0; ringtoneAudio.play().catch(() => {}); }
+  function stopRingtone(){ ringtoneAudio.pause(); ringtoneAudio.currentTime = 0; }
+
+  function prepareCallUI(isRinging){
+    const cs = $('callScreen');
+    if (state.experimental) {
+      cs.classList.add('exp-call-ui');
+      $('expGridActions').style.display = 'grid';
+    } else {
+      cs.classList.remove('exp-call-ui');
+      $('expGridActions').style.display = 'none';
+    }
+    if (isRinging) cs.classList.add('ringing');
+    else cs.classList.remove('ringing');
   }
 
   async function initiateCall(){
@@ -2164,11 +2253,9 @@
     }
 
     if (lockArmed && vaultAvailable()){
-      callPasscode = await askPasscode({ title:'Encrypted Call', desc:'Enter a passcode to encrypt your voice chunks over ntfy.', ok:'Start Call' });
+      callPasscode = await askPasscode({ title:'Encrypted Call', desc:'Enter passcode to encrypt call.', ok:'Start Call' });
       if (callPasscode === null) return;
-    } else {
-      callPasscode = null;
-    }
+    } else { callPasscode = null; }
 
     try {
       callAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -2178,12 +2265,10 @@
         if (e.data && e.data.size > 0 && callActive && callConnected) {
           const buffer = await e.data.arrayBuffer();
           let dataStr = bufToB64(buffer);
-
           if (callPasscode && vaultAvailable()){
             const enc = await vaultEncryptBytes(callPasscode, buffer);
             dataStr = enc.salt + '.' + enc.iv + '.' + bufToB64(enc.ct);
           }
-
           sendControl(chat.code, { t: 'v_chunk', data: dataStr, pass: !!callPasscode }, true);
         }
       };
@@ -2192,7 +2277,7 @@
       callConnected = false;
       callSeconds = 0;
 
-      // Show call screen UI
+      prepareCallUI(true);
       $('callScreen').classList.add('show');
       $('callPeerName').textContent = chat.title || chat.code;
       $('callAvatar').textContent = avatarText(chat.title || chat.code);
@@ -2201,7 +2286,6 @@
       $('callTimerDisplay').style.display = 'none';
 
       playRingtone();
-      // Send call offer / initiation
       sendControl(chat.code, { t: 'v_chunk', data: '', pass: false }, true);
 
     } catch(err) {
@@ -2211,11 +2295,12 @@
   }
 
   async function handleIncomingCallOffer(chat, from){
-    if (callActive) return; // already in a call
+    if (callActive) return;
     callActive = true;
     callConnected = false;
     callSeconds = 0;
 
+    prepareCallUI(true);
     $('callScreen').classList.add('show');
     $('callPeerName').textContent = chat.title || chat.code;
     $('callAvatar').textContent = avatarText(chat.title || chat.code);
@@ -2245,13 +2330,14 @@
       };
 
       stopRingtone();
+      prepareCallUI(false);
       callConnected = true;
       callRecorder.start(2500);
 
       $('callAcceptBtn').style.display = 'none';
       $('callStateText').textContent = 'Connected';
       $('callTimerDisplay').style.display = 'block';
-      startCallTimer();
+      startCallTimer(); // Countdown starts ONLY after acceptance!
 
       sendControl(chat.code, { t: 'v_accept' }, true);
     } catch(err){
@@ -2263,13 +2349,14 @@
   function handleCallAccepted(chat, from){
     if (!callActive) return;
     stopRingtone();
+    prepareCallUI(false);
     callConnected = true;
     if (callRecorder && callRecorder.state === 'inactive') {
       callRecorder.start(2500);
     }
     $('callStateText').textContent = 'Connected';
     $('callTimerDisplay').style.display = 'block';
-    startCallTimer();
+    startCallTimer(); // Countdown starts ONLY after acceptance!
   }
 
   function startCallTimer(){
@@ -2313,7 +2400,7 @@
     callTimerInterval = null;
     callSeconds = 0;
 
-    $('callScreen').classList.remove('show');
+    $('callScreen').classList.remove('show', 'exp-call-ui', 'ringing');
     $('remoteAudio').srcObject = null;
   }
 
@@ -2323,13 +2410,13 @@
       handleIncomingCallOffer(chat, from);
       return;
     }
-    if (!dataStr) return; // just an offer signal
+    if (!dataStr) return;
 
     try {
       let rawBytes;
       if (isEncrypted){
         if (!callPasscode && vaultAvailable()){
-          callPasscode = await askPasscode({ title:'Incoming Encrypted Voice', desc:'Enter the passcode to hear this call.', ok:'Unlock Audio' });
+          callPasscode = await askPasscode({ title:'Incoming Encrypted Voice', desc:'Enter passcode to listen.', ok:'Unlock Audio' });
         }
         if (!callPasscode) return;
         const parts = dataStr.split('.');
@@ -2358,19 +2445,16 @@
   }
 
   /* ================= WIRING ================= */
-  // sidebar / drawer
   $('sidebarToggle').addEventListener('click', () => $('sidebar').classList.toggle('collapsed'));
   $('menuBtn').addEventListener('click', () => { $('sidebar').classList.add('open'); $('sidebarBackdrop').classList.add('show'); });
   $('sidebarBackdrop').addEventListener('click', () => { $('sidebar').classList.remove('open'); $('sidebarBackdrop').classList.remove('show'); });
 
-
-  // contacts and groups
   $('contactsBtn').addEventListener('click', () => { renderContacts(); openModal('peopleModal'); });
   $('peopleClose').addEventListener('click', () => closeModal('peopleModal'));
   $('saveContactBtn').addEventListener('click', () => {
     const name = $('contactName').value.trim();
     const number = $('contactNumber').value.replace(/\D/g,'');
-    if (!name || !/^\d{11}$/.test(number)){ toast('Enter a name and a valid eleven digit number'); return; }
+    if (!name || !/^\d{11}$/.test(number)){ toast('Enter a name and an eleven digit number'); return; }
     if (number === ownCode()){ toast('That is your own number'); return; }
     const existing = state.contacts.find(x => x.number === number);
     if (existing) existing.name = name;
@@ -2386,12 +2470,23 @@
   $('groupCancel').addEventListener('click', () => closeModal('groupModal'));
   $('groupCreate').addEventListener('click', createGroup);
 
-  // full-screen calls with ringtone
+  // Calling
   $('callBtn').addEventListener('click', initiateCall);
   $('callAcceptBtn').addEventListener('click', acceptCall);
   $('callEndBtn').addEventListener('click', () => terminateCall(true));
 
-  // header
+  // Experimental Grid UI button toggles
+  $('expMuteBtn').addEventListener('click', function(){
+    this.classList.toggle('active');
+    if (callAudioStream){
+      const track = callAudioStream.getAudioTracks()[0];
+      if (track) track.enabled = !this.classList.contains('active');
+    }
+  });
+  $('expKeypadBtn').addEventListener('click', function(){ this.classList.toggle('active'); });
+  $('expSpeakerBtn').addEventListener('click', function(){ this.classList.toggle('active'); });
+
+  // Header & Modals
   $('settingsBtn').addEventListener('click', () => openModal('settingsModal'));
   $('settingsClose').addEventListener('click', () => closeModal('settingsModal'));
   $('helpBtn').addEventListener('click', () => $('helpOverlay').classList.add('show'));
@@ -2399,7 +2494,6 @@
   $('copyCodeBtn').addEventListener('click', () => { const c = activeChat(); if (c) copyText(c.code, 'Code ' + c.code + ' copied'); });
   $('qrBtn').addEventListener('click', () => openQr());
 
-  // add chat
   $('newChatBtn').addEventListener('click', () => openModal('newChatModal'));
   $('newChatCancel').addEventListener('click', () => closeModal('newChatModal'));
   $('newChatConfirm').addEventListener('click', () => {
@@ -2407,7 +2501,6 @@
     if (ok){ $('newChatCode').value = ''; $('newChatName').value = ''; closeModal('newChatModal'); }
   });
 
-  // join screen
   $('joinBtn').addEventListener('click', () => joinCode($('joinCode').value));
   $('joinCode').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); joinCode($('joinCode').value); } });
   $('joinMineBtn').addEventListener('click', () => $('joinMine').classList.toggle('show'));
@@ -2415,7 +2508,6 @@
   $('joinShareBtn').addEventListener('click', () => copyText(buildJoinLink(ownCode()), 'Invite link copied'));
   $('joinStartBtn').addEventListener('click', () => joinCode(ownCode()));
 
-  // QR / scanner modals
   $('qrClose').addEventListener('click', () => closeModal('qrModal'));
   $('qrCopyLink').addEventListener('click', () => copyText(buildJoinLink($('qrImage').dataset.code || ownCode()), 'Link copied'));
   $('qrScan').addEventListener('click', () => { closeModal('qrModal'); openScanner(); });
@@ -2423,7 +2515,7 @@
   $('scanModal').addEventListener('click', e => { if (e.target === $('scanModal')) closeScanner(); });
   $('scanGo').addEventListener('click', () => { const v = $('scanManual').value; if (joinCode(v)){ $('scanManual').value = ''; closeScanner(); } });
 
-  // settings
+  // Settings Toggles
   $('nameInput').addEventListener('change', e => { state.name = e.target.value.trim() || 'Me'; localStorage.setItem('ntfy_name', state.name); });
   $('themeToggle').addEventListener('change', () => {
     document.body.classList.toggle('dark', $('themeToggle').checked);
@@ -2432,6 +2524,15 @@
   $('soundToggle').addEventListener('change', () => { state.sound = $('soundToggle').checked; localStorage.setItem('ntfy_sound', state.sound ? '1' : '0'); });
   $('uiEmojiToggle').checked = state.showUiEmoji;
   $('uiEmojiToggle').addEventListener('change', () => { state.showUiEmoji = $('uiEmojiToggle').checked; localStorage.setItem('ntfy_ui_emoji', state.showUiEmoji ? '1' : '0'); document.body.classList.toggle('show-ui-emoji', state.showUiEmoji); });
+  
+  // Experimental Features switch
+  $('experimentalToggle').checked = state.experimental;
+  $('experimentalToggle').addEventListener('change', () => {
+    state.experimental = $('experimentalToggle').checked;
+    localStorage.setItem('ntfy_experimental', state.experimental ? '1' : '0');
+    toast('Experimental features ' + (state.experimental ? 'enabled' : 'disabled'));
+  });
+
   document.body.classList.toggle('show-ui-emoji', state.showUiEmoji);
   $('notifBtn').addEventListener('click', async () => {
     if (!('Notification' in window)){ toast('Notifications not supported'); return; }
@@ -2439,7 +2540,7 @@
     toast(r === 'granted' ? 'Notifications enabled' : 'Permission denied');
   });
   $('regenBtn').addEventListener('click', () => {
-    if (!confirm('Generate a new code? Your old channel and its history will be removed.')) return;
+    if (!confirm('Generate a new code?')) return;
     const old = ownCode();
     if (globalStreams[old]){ globalStreams[old].close(); delete globalStreams[old]; }
     const nc = makeCode();
@@ -2451,19 +2552,16 @@
     toast('New code: ' + nc);
   });
   $('resetBtn').addEventListener('click', () => {
-    if (!confirm('Reset this device? All chats and settings will be cleared.')) return;
+    if (!confirm('Reset device?')) return;
     localStorage.clear(); location.reload();
   });
 
-  // search
   $('searchInput').addEventListener('input', e => { state.search = e.target.value; renderChatList(); renderMessages(); });
 
-  // passcode
   $('passOk').addEventListener('click', () => { const v = $('passInput').value; if (!v) return; resolvePass(v); });
   $('passCancel').addEventListener('click', () => resolvePass(null));
   $('passInput').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); $('passOk').click(); } });
 
-  // message action sheet
   $('miReply').addEventListener('click', () => { if (menuTarget) startReply(menuTarget); closeModal('msgMenuModal'); });
   $('miCopy').addEventListener('click', () => { if (menuTarget) copyText(menuTarget.text || snippet(menuTarget), 'Copied'); closeModal('msgMenuModal'); });
   $('miForward').addEventListener('click', () => { if (menuTarget) copyText(snippet(menuTarget), 'Copied, paste in any chat to forward'); closeModal('msgMenuModal'); });
@@ -2472,10 +2570,8 @@
   $('miDelete').addEventListener('click', () => { if (menuTarget) confirmDelete(menuTarget); closeModal('msgMenuModal'); });
   $('msgMenuCancel').addEventListener('click', () => closeModal('msgMenuModal'));
 
-  // reply preview
   $('replyCancel').addEventListener('click', cancelReply);
 
-  // composer tools
   $('lockBtn').addEventListener('click', () => { lockArmed = !lockArmed; $('lockBtn').classList.toggle('active', lockArmed); updateComposerHint(); });
   $('urgentBtn').addEventListener('click', () => { urgentArmed = !urgentArmed; $('urgentBtn').classList.toggle('active', urgentArmed); updateComposerHint(); });
   $('locBtn').addEventListener('click', shareLocation);
@@ -2497,7 +2593,6 @@
   });
   $('emojiClose').addEventListener('click', () => closeModal('emojiModal'));
 
-  // attachments
   $('attachBtn').addEventListener('click', () => $('fileInput').click());
   $('fileInput').addEventListener('change', e => { const f = e.target.files[0]; if (f) handleFile(f); e.target.value = ''; });
   document.addEventListener('paste', e => {
@@ -2512,7 +2607,6 @@
   contentBox.addEventListener('dragleave', () => contentBox.classList.remove('drag-over'));
   contentBox.addEventListener('drop', e => { e.preventDefault(); contentBox.classList.remove('drag-over'); const f = e.dataTransfer.files && e.dataTransfer.files[0]; if (f) handleFile(f); });
 
-  // composer input
   let lastTypingSent = 0;
   $('messageInput').addEventListener('input', () => {
     autoResize();
@@ -2527,18 +2621,15 @@
     sendMessage();
   });
 
-  // lightbox
   $('lightboxClose').addEventListener('click', () => $('lightbox').classList.remove('show'));
   $('lightbox').addEventListener('click', e => { if (e.target === $('lightbox')) $('lightbox').classList.remove('show'); });
   $('lightboxDownload').addEventListener('click', downloadLightbox);
 
-  // modal backdrop close
   ['settingsModal','newChatModal','passModal','qrModal','msgMenuModal','emojiModal','peopleModal','groupModal'].forEach(id => {
     $(id).addEventListener('click', e => { if (e.target === $(id)) { if (id === 'passModal') resolvePass(null); else closeModal(id); } });
   });
   document.addEventListener('click', () => document.querySelectorAll('.dropdown.show').forEach(d => d.classList.remove('show')));
 
-  // focus handling
   window.addEventListener('focus', () => { const c = activeChat(); if (c){ c.unread = 0; saveChats(); renderChatList(); } });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible'){
