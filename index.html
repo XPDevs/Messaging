@@ -623,51 +623,28 @@
     justify-content: space-between;
     padding: calc(30px + env(safe-area-inset-top)) 24px calc(40px + env(safe-area-inset-bottom));
   }
-  .call-screen.exp-call-ui .call-user-info {
-    margin-top: 20px;
-  }
+  .call-screen.exp-call-ui .call-user-info { margin-top: 20px; }
   .call-screen.exp-call-ui .call-name {
-    font-size: 1.8rem;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    color: #ffffff;
+    font-size: 1.8rem; font-weight: 600; letter-spacing: 0.02em; color: #ffffff;
   }
-  .call-screen.exp-call-ui .call-state-text {
-    font-size: 1rem;
-    color: rgba(255,255,255,0.65);
-  }
+  .call-screen.exp-call-ui .call-state-text { font-size: 1rem; color: rgba(255,255,255,0.65); }
   .call-screen.exp-call-ui .call-timer-display {
-    font-size: 1.4rem;
-    font-weight: 500;
-    color: #4cd964;
-    letter-spacing: 0.08em;
+    font-size: 1.4rem; font-weight: 500; color: #4cd964; letter-spacing: 0.08em;
   }
-  .call-screen.exp-call-ui .call-avatar-wrapper {
-    position: relative;
-    margin: 20px 0;
-  }
+  .call-screen.exp-call-ui .call-avatar-wrapper { position: relative; margin: 20px 0; }
   .call-screen.exp-call-ui .call-avatar {
-    width: 120px;
-    height: 120px;
-    font-size: 42px;
+    width: 120px; height: 120px; font-size: 42px;
     border: 3px solid rgba(255,255,255,0.15);
     background: linear-gradient(135deg, #2c3e50, #4ca1af);
-    position: relative;
-    z-index: 2;
+    position: relative; z-index: 2;
   }
   .call-screen.exp-call-ui.ringing .call-avatar-wrapper::before,
   .call-screen.exp-call-ui.ringing .call-avatar-wrapper::after {
-    content: "";
-    position: absolute;
-    inset: -15px;
-    border-radius: 50%;
+    content: ""; position: absolute; inset: -15px; border-radius: 50%;
     background: rgba(26,115,232,0.3);
-    animation: pulseRing 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
-    z-index: 1;
+    animation: pulseRing 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite; z-index: 1;
   }
-  .call-screen.exp-call-ui.ringing .call-avatar-wrapper::after {
-    animation-delay: 0.6s;
-  }
+  .call-screen.exp-call-ui.ringing .call-avatar-wrapper::after { animation-delay: 0.6s; }
   @keyframes pulseRing {
     0% { transform: scale(0.8); opacity: 0.8; }
     100% { transform: scale(1.6); opacity: 0; }
@@ -675,47 +652,25 @@
 
   /* Realistic In-Call Grid Controls */
   .exp-grid-actions {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 20px 24px;
-    width: 100%;
-    max-width: 320px;
-    margin-bottom: 24px;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px 24px;
+    width: 100%; max-width: 320px; margin-bottom: 24px;
   }
   .exp-grid-btn {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    background: transparent;
-    border: none;
-    color: #fff;
-    font-size: 12px;
-    opacity: 0.9;
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    background: transparent; border: none; color: #fff; font-size: 12px; opacity: 0.9;
   }
   .exp-grid-btn .icon-circle {
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.12);
-    backdrop-filter: blur(10px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
+    width: 60px; height: 60px; border-radius: 50%;
+    background: rgba(255,255,255,0.12); backdrop-filter: blur(10px);
+    display: flex; align-items: center; justify-content: center; transition: all 0.2s ease;
   }
   .exp-grid-btn:hover .icon-circle, .exp-grid-btn.active .icon-circle {
-    background: rgba(255,255,255,0.3);
-    transform: scale(1.05);
+    background: rgba(255,255,255,0.3); transform: scale(1.05);
   }
-  .exp-grid-btn.active .icon-circle {
-    background: #ffffff;
-    color: #000000;
-  }
+  .exp-grid-btn.active .icon-circle { background: #ffffff; color: #000000; }
 
   /* ===== Call data visibility ===== */
   .call-screen{overflow-y:auto}
-  /* Transport counters and packet logs are deliberately not exposed on the call screen. */
   .call-data-strip,.call-data-details{display:none !important}
   .call-data-strip{
     display:flex;align-items:center;justify-content:center;gap:7px;flex-wrap:wrap;
@@ -730,11 +685,6 @@
   .call-data-strip .cds-dot.idle{background:#9aa0a6;box-shadow:none}
   .call-data-strip .cds-dot.err{background:#ff4d4d;box-shadow:0 0 0 3px rgba(255,77,77,.16)}
   .call-data-toggle{display:none !important}
-  .call-data-toggle{
-    background:transparent;border:none;color:var(--primary);font-weight:700;
-    font-size:11.5px;padding:2px 4px;border-radius:8px;
-  }
-  .call-data-toggle:hover{background:rgba(var(--primary-rgb),.12)}
   .call-data-details{
     display:none;width:min(370px,92vw);text-align:left;
     background:rgba(127,127,127,.10);border:1px solid rgba(127,127,127,.22);
@@ -760,7 +710,6 @@
   .call-screen.exp-call-ui .cdp-row{color:rgba(255,255,255,.6)}
   .call-screen.exp-call-ui .cdp-row b{color:#fff}
   .call-screen.exp-call-ui .call-data-log{border-top-color:rgba(255,255,255,.16);color:rgba(255,255,255,.6)}
-  .call-screen.exp-call-ui .call-data-toggle{color:#8ab4f8}
 
   /* Call summary card in the transcript */
   .call-card{display:flex;align-items:center;gap:12px;min-width:230px;max-width:100%}
@@ -825,6 +774,53 @@
   .sidebar-footer .new-item-btn{font-size:12px;padding:9px 12px}
   @media(max-width:900px){.sidebar-footer .new-item-btn{flex:1}}
 
+  /* ===== ADDED: responsive refinements + fixes ===== */
+  .header-sub{flex:1 1 auto;min-width:0}
+  .content-header-actions{margin-left:auto;flex-shrink:0}
+
+  /* touch devices: never rely on hover for actions */
+  @media (hover:none), (pointer:coarse){
+    .message-actions{display:none !important}
+    .dots-btn{opacity:.75}
+    .list-item:hover{background:transparent}
+    .dots-btn:hover{background:transparent}
+  }
+
+  @media (max-width:820px){
+    #copyCodeBtn, #helpBtn{display:none}
+    .content-header{gap:6px;padding-left:10px;padding-right:10px}
+    .content-title{font-size:1.02rem}
+    .header-code{font-size:11px}
+    .content-warning{font-size:11px}
+  }
+  @media (max-width:520px){
+    .header-code{display:none}
+    .content-header{min-height:58px}
+    .icon-btn{min-width:36px;min-height:36px;padding:6px}
+    .round-btn{width:40px;height:40px}
+    .status #statusText{display:none}
+  }
+  @media (max-width:400px){
+    #qrBtn{display:none}
+    .content-box{padding:12px 10px 4px}
+    .input-container{padding:0 10px calc(12px + env(safe-area-inset-bottom))}
+    .bubble{font-size:15px;padding:9px 14px}
+  }
+  @media (max-width:900px){
+    .sidebar-footer{flex-wrap:wrap;gap:8px}
+    .sidebar-footer .new-item-btn{flex:1 1 calc(50% - 4px);justify-content:center}
+  }
+  @media (max-height:640px){
+    .call-avatar{width:72px;height:72px;font-size:24px}
+    .call-screen.exp-call-ui .call-avatar{width:88px;height:88px;font-size:30px}
+    .exp-grid-actions{gap:12px 18px;margin-bottom:12px}
+    .exp-grid-btn .icon-circle{width:50px;height:50px}
+    .call-user-info{margin-top:4px}
+    .call-actions-row{margin-bottom:16px}
+  }
+  .mic-note{font-size:12px;line-height:1.5;color:#70757a;margin:6px 0 0}
+  .mic-note.ok{color:#28a645}
+  .mic-note.err{color:#ff4d4d}
 </style>
 </head>
 <body class="dark">
@@ -1183,8 +1179,15 @@
         <label class="toggle"><input type="checkbox" id="soundToggle"><span class="slider"></span></label>
       </div>
       <div class="field"><label>Notifications</label><button class="settings-btn" id="notifBtn">Enable browser notifications</button><p>Browser notifications work while this page is running.</p></div>
+
+      <div class="field">
+        <label>Microphone</label>
+        <button class="settings-btn muted" id="micTestBtn">Test microphone access</button>
+        <p class="mic-note" id="micTestNote">Calls and voice notes need microphone permission. If nothing happens when you tap, check the site permissions in your browser.</p>
+      </div>
+
       <div class="field field-row"><label>Show emoji in interface</label><label class="toggle"><input type="checkbox" id="uiEmojiToggle"><span class="slider"></span></label></div>
-      
+
       <!-- Experimental Features Toggle -->
       <div class="field field-row" style="border-top:1px dashed var(--border);padding-top:12px;margin-top:4px">
         <label>Experimental features (Realistic Calling UI &amp; Voice)</label>
@@ -1206,7 +1209,7 @@
     <h3>How it works</h3>
     <p>Your eleven digit number identifies your ntfy topic. Share it only with people you trust.</p>
     <p><b>Rich messages</b>, photos, voice notes, files and location. Everything is delivered through ntfy.</p>
-    <p><b>Vault Lock </b>, encrypt text or photo on your device with a passcode.</p>
+    <p><b>Vault Lock</b>, encrypt text or a photo on your device with a passcode.</p>
     <button class="help-overlay-close" id="helpClose">Got it</button>
   </div>
 </div>
@@ -1255,6 +1258,7 @@
   let scanStream = null, scanTimer = null;
   let mediaRecorder = null, recChunks = [], recTimer = null, recStart = 0;
   let soundCtx = null, lastSound = 0;
+  let opts_forceBottom = false;
 
   function makeCode(){ return String(Math.floor(10000000000 + Math.random() * 90000000000)); }
   function ownCode(){
@@ -1278,23 +1282,26 @@
       }));
     } catch(_) { return []; }
   }
+
+  /* Persist chats without destroying locally cached media unless we really must. */
   function saveChats(){
-    const strip = (all) => {
-      state.chats.forEach(c => (c.messages || []).forEach(m => {
-        if (!m.dataUrl) return;
-        // Keep media that has no remote copy only while it is still sending.
-        if (all || m.attachUrl || m.cached) delete m.dataUrl;
-      }));
-    };
-    try { localStorage.setItem('ntfy_chats', JSON.stringify(state.chats)); return; }
-    catch(_){}
-    strip(false);
-    try { localStorage.setItem('ntfy_chats', JSON.stringify(state.chats)); return; }
-    catch(_){}
-    strip(true);
-    try { localStorage.setItem('ntfy_chats', JSON.stringify(state.chats)); }
-    catch(_){}
+    const write = () => localStorage.setItem('ntfy_chats', JSON.stringify(state.chats));
+    try { write(); return; } catch(_){}
+    // 1) drop local copies that also have a remote URL
+    state.chats.forEach(c => (c.messages || []).forEach(m => { if (m.dataUrl && m.attachUrl) delete m.dataUrl; }));
+    try { write(); return; } catch(_){}
+    // 2) drop the oldest half of the remaining local media
+    const withMedia = [];
+    state.chats.forEach(c => (c.messages || []).forEach(m => { if (m.dataUrl) withMedia.push(m); }));
+    withMedia.sort((a, b) => a.time - b.time);
+    const drop = Math.ceil(withMedia.length / 2);
+    for (let i = 0; i < drop; i++) delete withMedia[i].dataUrl;
+    try { write(); return; } catch(_){}
+    // 3) last resort: strip all local media
+    state.chats.forEach(c => (c.messages || []).forEach(m => { delete m.dataUrl; }));
+    try { write(); } catch(_){}
   }
+
   function newId(){ return 'm_' + Math.random().toString(36).slice(2) + Date.now(); }
   function activeChat(){ return state.chats.find(c => c.code === state.activeCode) || state.chats[0]; }
   function avatarText(s){ const t = (s || '?').trim(); return /^\d+$/.test(t) ? t.slice(-2) : t.slice(0,2).toUpperCase(); }
@@ -1365,7 +1372,7 @@
     return bytes;
   }
 
-  /* ---------- G.711 µ-law helpers (used for low-latency call audio) ---------- */
+  /* ---------- G.711 µ-law helpers ---------- */
   const ULAW_DECODE = (() => {
     const t = new Int16Array(256);
     for (let i = 0; i < 256; i++){
@@ -1788,7 +1795,6 @@
     });
     if (nearBottom || opts_forceBottom) box.scrollTop = box.scrollHeight;
   }
-  let opts_forceBottom = false;
 
   function updateStatus(){
     const es = streams[state.activeCode];
@@ -1841,12 +1847,12 @@
     } catch(_){ toast('Could not save'); }
   }
 
-  function toast(msg){
+  function toast(msg, ms){
     const t = $('toast');
     t.textContent = msg;
     t.classList.add('show');
     clearTimeout(toast._t);
-    toast._t = setTimeout(() => t.classList.remove('show'), 2600);
+    toast._t = setTimeout(() => t.classList.remove('show'), ms || 2800);
   }
   function openModal(id){ $(id).classList.add('show'); }
   function closeModal(id){ $(id).classList.remove('show'); }
@@ -1915,7 +1921,7 @@
   async function fetchWithTimeout(url, options, timeoutMs){
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), timeoutMs || 12000);
-    try { return await fetch(url, Object.assign({}, options || {}, { signal:ctl.signal })); }
+    try { return await fetch(url, Object.assign({}, options || {}, { signal: ctl.signal })); }
     finally { clearTimeout(timer); }
   }
 
@@ -1926,7 +1932,6 @@
     const json = JSON.stringify(obj);
     const body = state.name + ': ' + (opts.raw ? CTL_RAW + json : CTL_MAGIC + b64EncodeUtf8(json));
     const bodyBytes = new TextEncoder().encode(body).length;
-    // ntfy.sh accepts up to ~4 KB in the message body. Fail loudly instead of silently.
     if (bodyBytes > 3900) return { id:null, error:'Payload too large (' + bodyBytes + ' B)', status:413 };
     const headers = { 'Title': ownCode() };
     if (opts.ephemeral) headers['Cache'] = 'no';
@@ -2016,30 +2021,12 @@
         const msg = Object.assign({}, base, { sender: from, kind:'location', lat: c.lat, lng: c.lng, acc: c.acc });
         deliver(chat, msg); notifyMsg(msg); return;
       }
-      case 'v_offer': {
-        if (typeof handleIncomingCallOffer === 'function') handleIncomingCallOffer(chat, from, c);
-        return;
-      }
-      case 'v_audio': {
-        if (typeof receiveCallAudio === 'function') receiveCallAudio(chat, from, c);
-        return;
-      }
-      case 'v_chunk': {
-        if (typeof receiveVoiceChunk === 'function') receiveVoiceChunk(chat, from, c.data, c.pass);
-        return;
-      }
-      case 'v_accept': {
-        if (typeof handleCallAccepted === 'function') handleCallAccepted(chat, from);
-        return;
-      }
-      case 'v_reject': {
-        if (typeof handleCallRejected === 'function') handleCallRejected(chat, from);
-        return;
-      }
-      case 'v_end': {
-        if (typeof handleCallEndSignal === 'function') handleCallEndSignal(chat, from);
-        return;
-      }
+      case 'v_offer': { if (typeof handleIncomingCallOffer === 'function') handleIncomingCallOffer(chat, from, c); return; }
+      case 'v_audio': { if (typeof receiveCallAudio === 'function') receiveCallAudio(chat, from, c); return; }
+      case 'v_chunk': { if (typeof receiveVoiceChunk === 'function') receiveVoiceChunk(chat, from, c.data, c.pass); return; }
+      case 'v_accept': { if (typeof handleCallAccepted === 'function') handleCallAccepted(chat, from); return; }
+      case 'v_reject': { if (typeof handleCallRejected === 'function') handleCallRejected(chat, from); return; }
+      case 'v_end': { if (typeof handleCallEndSignal === 'function') handleCallEndSignal(chat, from); return; }
     }
     if (changed){ saveChats(); renderChatList(); if (state.activeCode === chat.code) renderMessages(); }
   }
@@ -2298,7 +2285,7 @@
   async function startRecording(){
     if (callActive){ toast('Finish the call before recording a voice note'); return; }
     if (mediaRecorder && mediaRecorder.state === 'recording') return;
-    if (!navigator.mediaDevices || !window.MediaRecorder){ toast('Recording not supported in this browser'); return; }
+    if (!navigator.mediaDevices || !window.MediaRecorder){ toast(micBlockedReason(), 5000); return; }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true } });
       const preferred = ['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg'];
@@ -2330,7 +2317,7 @@
       if (cancel) cancel.classList.add('show');
       updateComposerHint();
       recTimer = setInterval(() => { $('recTime').textContent = recClock(Date.now() - recStart); }, 250);
-    } catch(err){ toast('Microphone permission denied'); }
+    } catch(err){ toast(micErrorText(err), 5000); }
   }
   function stopRecording(send){
     recSend = send;
@@ -2425,7 +2412,7 @@
     return '?code=' + code;
   }
   function saveDisplayName(raw){
-    const name = String(raw == null ? state.name : raw).trim().slice(0, 40) || 'Me';
+    const name = String(raw == null ? state.name : raw).trim().replace(/:/g, '').slice(0, 40) || 'Me';
     state.name = name;
     localStorage.setItem('ntfy_name', name);
     if ($('nameInput')) $('nameInput').value = name;
@@ -2484,19 +2471,17 @@
         note.textContent = 'Scanning is not supported in this browser. Type the number below.';
         return;
       }
-      if ('BarcodeDetector' in window){
-        const det = new BarcodeDetector({ formats:['qr_code'] });
-        scanTimer = setInterval(async () => {
-          try {
-            const codes = await det.detect(video);
-            if (codes && codes.length){
-              const raw = codes[0].rawValue || '';
-              const m = raw.match(/\d{11}/);
-              if (m){ closeScanner(); joinCode(m[0]); }
-            }
-          } catch(_){}
-        }, 600);
-      } else { note.textContent = 'Scanning not supported'; }
+      const det = new BarcodeDetector({ formats:['qr_code'] });
+      scanTimer = setInterval(async () => {
+        try {
+          const codes = await det.detect(video);
+          if (codes && codes.length){
+            const raw = codes[0].rawValue || '';
+            const m = raw.match(/\d{11}/);
+            if (m){ closeScanner(); joinCode(m[0]); }
+          }
+        } catch(_){}
+      }, 600);
     } catch(err){ note.textContent = 'Camera permission denied'; }
   }
   function closeScanner(){
@@ -2582,20 +2567,84 @@
     closeModal('groupModal');
   }
 
-  /* ---------- Fullscreen Calling & Ringtone Implementation ----------
-     Calls are still carried by ntfy.sh. Audio is captured as 8 kHz µ-law PCM,
-     split into ~240 ms chunks and posted as compact control messages. Every
-     packet is counted and shown in the call screen so the data being sent is
-     no longer hidden.
-  ------------------------------------------------------------------------ */
+  /* ======================================================================
+     AUDIO / MICROPHONE PLUMBING
+     ====================================================================== */
+  let sharedAudioCtx = null;
+  let micStream = null;
+
+  function getAudioCtx(){
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    if (!sharedAudioCtx || sharedAudioCtx.state === 'closed'){
+      try { sharedAudioCtx = new AC(); } catch(_){ return null; }
+    }
+    return sharedAudioCtx;
+  }
+  function unlockAudio(){
+    const ctx = getAudioCtx();
+    if (!ctx) return null;
+    if (ctx.state === 'suspended'){ try { ctx.resume(); } catch(_){} }
+    return ctx;
+  }
+  function secureOriginOk(){
+    return !!(window.isSecureContext ||
+      location.hostname === 'localhost' ||
+      location.hostname === '127.0.0.1' ||
+      location.hostname === '[::1]');
+  }
+  function micBlockedReason(){
+    if (!secureOriginOk()) return 'Microphone needs a secure page. Open this app over https:// (or on localhost) and try again.';
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return 'This browser does not expose microphone access to the page.';
+    return 'Microphone unavailable.';
+  }
+  function micErrorText(err){
+    const n = err && err.name;
+    if (n === 'NotAllowedError' || n === 'SecurityError')
+      return 'Microphone blocked. Tap the lock/settings icon in the address bar, allow the microphone, then try again.';
+    if (n === 'NotFoundError' || n === 'DevicesNotFoundError') return 'No microphone was found on this device.';
+    if (n === 'NotReadableError' || n === 'TrackStartError') return 'The microphone is busy in another app. Close it and try again.';
+    if (n === 'OverconstrainedError') return 'This microphone does not support the requested settings.';
+    if (err && err.message) return err.message;
+    return micBlockedReason();
+  }
+  async function acquireMic(){
+    if (micStream && micStream.getAudioTracks().some(t => t.readyState === 'live')) return micStream;
+    releaseMic();
+    if (!secureOriginOk() || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      throw new Error(micBlockedReason());
+    }
+    const attempts = [
+      { audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true, channelCount:1 } },
+      { audio:{ echoCancellation:true } },
+      { audio:true }
+    ];
+    let lastErr = null;
+    for (const constraints of attempts){
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia(constraints);
+        return micStream;
+      } catch(err){
+        lastErr = err;
+        const n = err && err.name;
+        if (n === 'NotAllowedError' || n === 'SecurityError' || n === 'NotFoundError' || n === 'DevicesNotFoundError') break;
+      }
+    }
+    throw lastErr || new Error('Microphone unavailable');
+  }
+  function releaseMic(){
+    if (!micStream) return;
+    try { micStream.getTracks().forEach(t => t.stop()); } catch(_){}
+    micStream = null;
+  }
+
+  /* ---------- Fullscreen Calling & Ringtone ---------- */
   const CALL_SAMPLE_RATE = 8000;
   const CALL_CHUNK_MS = 240;
   const CALL_CHUNK_BYTES = Math.round(CALL_SAMPLE_RATE * CALL_CHUNK_MS / 1000);
-  const MAX_CALL_SECONDS = 300; // 5 mins limit
-  const ringtoneAudio = new Audio('ringtone.mp3');
-  ringtoneAudio.loop = true;
+  const MAX_CALL_SECONDS = 300;
 
-  let callStream = null, callCaptureCtx = null, callProcessor = null, callMonitorGain = null, callCaptureSource = null;
+  let callCaptureSource = null, callProcessor = null, callMonitorGain = null;
   let callActive = false;
   let callConnected = false;
   let callDirection = 'out';
@@ -2609,19 +2658,40 @@
   let callStats = freshCallStats();
   let callTxQueue = [], callTxPumping = false, callTxSeq = 0;
   let callRxExpected = null, callRxBuffer = new Map();
-  let callPlayCtx = null, callPlayHead = 0;
+  let callPlayHead = 0;
   let callLegacyAudioQueue = [], callLegacyPlaying = false;
   let callLastErrorToast = 0;
+  let callCaptureStarting = false;
 
   function freshCallStats(){
     return { sentBytes:0, recvBytes:0, sentChunks:0, recvChunks:0, errors:0, startedAt:0 };
   }
 
+  /* Ringtone generated with Web Audio (no external file → no 404 noise) */
+  let ringTimer = null;
+  function ringBeep(){
+    const ctx = unlockAudio();
+    if (!ctx || ctx.state !== 'running'){ vibrate([0,200,120,200]); return; }
+    const t0 = ctx.currentTime;
+    [0, 0.45].forEach(off => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = 880;
+      g.gain.setValueAtTime(0.0001, t0 + off);
+      g.gain.exponentialRampToValueAtTime(0.13, t0 + off + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + off + 0.35);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(t0 + off); o.stop(t0 + off + 0.4);
+    });
+    vibrate([0,200,120,200]);
+  }
   function playRingtone(){
-    try { ringtoneAudio.currentTime = 0; ringtoneAudio.play().catch(() => {}); } catch(_){}
+    stopRingtone();
+    unlockAudio();
+    ringBeep();
+    ringTimer = setInterval(ringBeep, 2200);
   }
   function stopRingtone(){
-    try { ringtoneAudio.pause(); ringtoneAudio.currentTime = 0; } catch(_){}
+    if (ringTimer){ clearInterval(ringTimer); ringTimer = null; }
   }
 
   function prepareCallUI(isRinging){
@@ -2669,9 +2739,9 @@
     callStats.errors++;
     logCallData('err', '! ' + msg);
     updateCallDataUI();
-    if (Date.now() - callLastErrorToast > 4000){
+    if (Date.now() - callLastErrorToast > 5000){
       callLastErrorToast = Date.now();
-      toast('Call audio: ' + msg);
+      toast('Call: ' + msg, 4000);
     }
   }
 
@@ -2681,8 +2751,6 @@
     if (log) log.innerHTML = '';
     const details = $('callDataDetails');
     if (details) details.classList.remove('show');
-    const toggle = $('callDataToggle');
-    if (toggle) toggle.textContent = 'Details';
     updateCallDataUI();
   }
 
@@ -2734,37 +2802,28 @@
     if (chatCode && state.activeCode === chatCode) renderMessages();
   }
 
-  function primeCallAudio(){
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) throw new Error('Web Audio is not supported');
-    try {
-      if (!callCaptureCtx || callCaptureCtx.state === 'closed'){
-        try { callCaptureCtx = new AC({ sampleRate:CALL_SAMPLE_RATE }); }
-        catch(_) { callCaptureCtx = new AC(); }
-      }
-      if (callCaptureCtx.state === 'suspended') callCaptureCtx.resume().catch(() => {});
-      const playback = callPlaybackContext();
-      if (playback && playback.state === 'suspended') playback.resume().catch(() => {});
-    } catch(err) {
-      throw new Error('Could not initialise call audio: ' + (err.message || 'audio unavailable'));
-    }
-  }
-
   async function initiateCall(){
     if (callActive){ toast('You are already in a call'); return; }
-    try { primeCallAudio(); } catch(err){ toast(err.message); return; }
+    if (mediaRecorder && mediaRecorder.state === 'recording'){ toast('Finish the voice note first'); return; }
     const chat = activeChat();
     if (!chat){ toast('Open a conversation first'); return; }
     if (chat.group){ toast('Calls work in one to one chats only'); return; }
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !AC){
-      toast('Voice calls are not supported on this browser'); return;
+    if (!getAudioCtx()){ toast('Voice calls are not supported on this browser'); return; }
+
+    // Unlock audio and grab the microphone *inside* the tap, so the browser
+    // actually shows its permission prompt.
+    unlockAudio();
+    try {
+      await acquireMic();
+    } catch(err){
+      toast(micErrorText(err), 6000);
+      return;
     }
 
     let pass = null;
     if (lockArmed && vaultAvailable()){
       pass = await askPasscode({ title:'Encrypted Call', desc:'Enter a passcode. The other side must enter the same one.', ok:'Start Call' });
-      if (pass === null) return;
+      if (pass === null){ releaseMic(); return; }
     }
 
     callChatCode = chat.code;
@@ -2787,15 +2846,13 @@
     $('callAcceptBtn').style.display = 'none';
     $('callTimerDisplay').style.display = 'none';
     $('callTimerDisplay').textContent = '05:00 left';
-    $('callDataDetails').classList.remove('show');
     callMsg = null;
     addCallMessage('out');
     updateCallDataUI();
 
     playRingtone();
     logCallData('out', '↑ call offer sent');
-    let r = await sendControlEx(chat.code, { t:'v_offer', pass: !!callPasscode }, { ephemeral:true, raw:true });
-    if (!r.id) r = await sendControlEx(chat.code, { t:'v_offer', pass: !!callPasscode }, { ephemeral:true, raw:true });
+    const r = await sendControlEx(chat.code, { t:'v_offer', pass: !!callPasscode }, { ephemeral:true, raw:true });
     if (!r.id){
       callError(r.error || 'could not send call offer');
       toast('Could not reach the other side');
@@ -2815,6 +2872,8 @@
   async function handleIncomingCallOffer(chat, from, opts){
     if (from === state.name) return;
     if (callActive){
+      // Duplicate offer for the ring we're already showing → ignore.
+      if (callChatCode === chat.code && callDirection === 'in' && !callConnected) return;
       sendControl(chat.code, { t:'v_reject' }, true);
       return;
     }
@@ -2839,7 +2898,6 @@
     $('callAcceptBtn').style.display = 'flex';
     $('callTimerDisplay').style.display = 'none';
     $('callTimerDisplay').textContent = '05:00 left';
-    $('callDataDetails').classList.remove('show');
     addCallMessage('in');
     updateCallDataUI();
     logCallData('in', '↓ call offer received from ' + from);
@@ -2856,7 +2914,17 @@
 
   async function acceptCall(){
     if (!callActive || callConnected) return;
-    try { primeCallAudio(); } catch(err){ toast(err.message); return; }
+    unlockAudio();
+    // Ask for the mic from inside the tap first.
+    try {
+      await acquireMic();
+    } catch(err){
+      toast(micErrorText(err), 6000);
+      const chat0 = state.chats.find(c => c.code === callChatCode) || activeChat();
+      if (chat0) sendControl(chat0.code, { t:'v_reject' }, true);
+      terminateCall(false, 'declined');
+      return;
+    }
     const chat = state.chats.find(c => c.code === callChatCode) || activeChat();
     if (!chat) return;
     if (callIncomingEncrypted){
@@ -2891,14 +2959,14 @@
 
     try { await startCallCapture(); }
     catch(err){
-      callError('microphone: ' + (err.message || 'denied'));
-      toast('Microphone access denied');
-      terminateCall(true, 'ended');
+      callError(micErrorText(err));
+      toast('Microphone problem — you can listen but not talk. ' + micErrorText(err), 6000);
     }
   }
 
   async function handleCallAccepted(chat, from){
     if (!callActive || callConnected || callDirection !== 'out') return;
+    if (callChatCode && chat.code !== callChatCode) return;
     clearTimeout(callTimeout); callTimeout = null;
     stopRingtone();
     prepareCallUI(false);
@@ -2912,9 +2980,8 @@
     logCallData('in', '↓ call accepted');
     try { await startCallCapture(); }
     catch(err){
-      callError('microphone: ' + (err.message || 'denied'));
-      toast('Microphone access denied');
-      terminateCall(true, 'ended');
+      callError(micErrorText(err));
+      toast('Microphone problem — you can listen but not talk. ' + micErrorText(err), 6000);
     }
   }
 
@@ -2947,74 +3014,69 @@
   }
 
   async function startCallCapture(){
-    if (callProcessor && callStream) return;
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true, channelCount:1 }
-    });
-    const AC = window.AudioContext || window.webkitAudioContext;
-    let ctx = callCaptureCtx;
+    if (callProcessor || callCaptureStarting) return;
+    callCaptureStarting = true;
     try {
-      if (!ctx || ctx.state === 'closed'){
-        try { ctx = new AC({ sampleRate:CALL_SAMPLE_RATE }); }
-        catch(_) { ctx = new AC(); }
-        callCaptureCtx = ctx;
-      }
-      await ctx.resume();
-      if (ctx.state !== 'running') throw new Error('audio context is suspended; tap the call screen and try again');
-      if (!ctx.createScriptProcessor) throw new Error('audio capture is not supported');
-    } catch(err) {
-      stream.getTracks().forEach(track => track.stop());
-      if (ctx && ctx !== callCaptureCtx) try { ctx.close(); } catch(_){}
-      throw err;
-    }
-    const source = ctx.createMediaStreamSource(stream);
-    const processor = ctx.createScriptProcessor(2048, 1, 1);
-    const mute = ctx.createGain();
-    mute.gain.value = 0;
-    const ratio = ctx.sampleRate / CALL_SAMPLE_RATE;
-    let phase = 0, prev = 0;
-    let chunk = new Uint8Array(CALL_CHUNK_BYTES), fill = 0;
-    let capturedSamples = 0;
+      const ctx = unlockAudio();
+      if (!ctx) throw new Error('Web Audio is not supported on this browser');
+      if (ctx.state === 'suspended'){ try { await ctx.resume(); } catch(_){} }
+      if (ctx.state !== 'running') throw new Error('Audio is blocked by the browser — tap the call screen, then try again.');
 
-    processor.onaudioprocess = (ev) => {
-      if (!callActive || !callConnected) return;
-      const input = ev.inputBuffer.getChannelData(0);
-      const n = input.length;
-      if (!n) return;
-      let idx = phase;
-      while (idx < n){
-        const i0 = Math.floor(idx);
-        const frac = idx - i0;
-        let s0, s1;
-        if (i0 < 0) s0 = prev; else s0 = input[i0] || 0;
-        if (i0 + 1 < 0) s1 = prev;
-        else if (i0 + 1 < n) s1 = input[i0 + 1];
-        else s1 = s0;
-        const sample = s0 + (s1 - s0) * frac;
-        chunk[fill++] = linearToUlaw(Math.max(-32768, Math.min(32767, Math.round(sample * 32767))));
-        capturedSamples++;
-        if (fill >= chunk.length){
-          enqueueCallChunk(chunk.slice(0));
-          fill = 0;
+      const stream = await acquireMic();
+      const source = ctx.createMediaStreamSource(stream);
+      const proc = ctx.createScriptProcessor
+        ? ctx.createScriptProcessor(2048, 1, 1)
+        : (ctx.createJavaScriptNode ? ctx.createJavaScriptNode(2048, 1, 1) : null);
+      if (!proc) throw new Error('Audio capture is not supported on this browser');
+
+      const mute = ctx.createGain();
+      mute.gain.value = 0;
+
+      const ratio = ctx.sampleRate / CALL_SAMPLE_RATE;
+      let phase = 0, prev = 0;
+      let chunk = new Uint8Array(CALL_CHUNK_BYTES), fill = 0;
+      let capturedSamples = 0;
+
+      proc.onaudioprocess = (ev) => {
+        if (!callActive || !callConnected) return;
+        const input = ev.inputBuffer.getChannelData(0);
+        const n = input.length;
+        if (!n) return;
+        let idx = phase;
+        while (idx < n){
+          const i0 = Math.floor(idx);
+          const frac = idx - i0;
+          let s0, s1;
+          if (i0 < 0) s0 = prev; else s0 = input[i0] || 0;
+          if (i0 + 1 < 0) s1 = prev;
+          else if (i0 + 1 < n) s1 = input[i0 + 1];
+          else s1 = s0;
+          const sample = s0 + (s1 - s0) * frac;
+          chunk[fill++] = linearToUlaw(Math.max(-32768, Math.min(32767, Math.round(sample * 32767))));
+          capturedSamples++;
+          if (fill >= chunk.length){
+            enqueueCallChunk(chunk.slice(0));
+            fill = 0;
+          }
+          idx += ratio;
         }
-        idx += ratio;
-      }
-      phase = idx - n;
-      prev = input[n - 1] || 0;
-      if (capturedSamples >= CALL_SAMPLE_RATE * 2){
-        capturedSamples = 0;
-        if (!callTxPumping && !callTxQueue.length) logCallData('note', 'microphone capture active');
-      }
-    };
+        phase = idx - n;
+        prev = input[n - 1] || 0;
+        if (capturedSamples >= CALL_SAMPLE_RATE * 2){
+          capturedSamples = 0;
+          if (!callTxPumping && !callTxQueue.length) logCallData('note', 'microphone capture active');
+        }
+      };
 
-    source.connect(processor);
-    processor.connect(mute);
-    mute.connect(ctx.destination);
-    callStream = stream;
-    callCaptureCtx = ctx;
-    callProcessor = processor;
-    callCaptureSource = source;
-    callMonitorGain = mute;
+      source.connect(proc);
+      proc.connect(mute);
+      mute.connect(ctx.destination);
+      callCaptureSource = source;
+      callProcessor = proc;
+      callMonitorGain = mute;
+    } finally {
+      callCaptureStarting = false;
+    }
   }
 
   function stopCallCapture(){
@@ -3024,11 +3086,7 @@
     }
     if (callCaptureSource){ try { callCaptureSource.disconnect(); } catch(_){} callCaptureSource = null; }
     if (callMonitorGain){ try { callMonitorGain.disconnect(); } catch(_){} callMonitorGain = null; }
-    if (callCaptureCtx){ try { callCaptureCtx.close(); } catch(_){} callCaptureCtx = null; }
-    if (callStream){
-      try { callStream.getTracks().forEach(t => t.stop()); } catch(_){}
-      callStream = null;
-    }
+    releaseMic();
   }
 
   function enqueueCallChunk(bytes){
@@ -3065,15 +3123,12 @@
             continue;
           }
         }
-        let r = await sendControlEx(callChatCode, obj, { ephemeral:true, raw:true, timeout:8000 });
-        if (!r.id && callActive && callConnected){
-          r = await sendControlEx(callChatCode, obj, { ephemeral:true, raw:true, timeout:8000 });
-        }
+        const r = await sendControlEx(callChatCode, obj, { ephemeral:true, raw:true, timeout:9000 });
         if (r.id){
           callStats.sentBytes += bytes.length;
           callStats.sentChunks++;
           logCallData('out', '↑ #' + seq + ' · ' + humanSize(bytes.length));
-        } else {
+        } else if (callActive && callConnected){
           callError(r.error || 'send failed');
         }
         updateCallDataUI();
@@ -3084,19 +3139,8 @@
     }
   }
 
-  function callPlaybackContext(){
-    if (!callPlayCtx){
-      const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) return null;
-      callPlayCtx = new AC();
-      callPlayHead = 0;
-    }
-    if (callPlayCtx.state === 'suspended') callPlayCtx.resume().catch(() => {});
-    return callPlayCtx;
-  }
-
   function playCallAudio(bytes){
-    const ctx = callPlaybackContext();
+    const ctx = unlockAudio();
     if (!ctx) return;
     const samples = ulawToFloat(bytes);
     const buffer = ctx.createBuffer(1, samples.length, CALL_SAMPLE_RATE);
@@ -3250,7 +3294,6 @@
     callRxExpected = null;
     callRxBuffer.clear();
     callPlayHead = 0;
-    if (callPlayCtx){ try { callPlayCtx.close(); } catch(_){} callPlayCtx = null; }
     clearInterval(callTimerInterval);
     callTimerInterval = null;
     callSeconds = 0;
@@ -3267,9 +3310,6 @@
     $('callAcceptBtn').style.display = 'none';
     $('callTimerDisplay').style.display = 'none';
     $('remoteAudio').srcObject = null;
-    $('callDataDetails').classList.remove('show');
-    const toggle = $('callDataToggle');
-    if (toggle) toggle.textContent = 'Details';
     updateCallDataUI();
   }
 
@@ -3303,19 +3343,12 @@
   $('callBtn').addEventListener('click', initiateCall);
   $('callAcceptBtn').addEventListener('click', acceptCall);
   $('callEndBtn').addEventListener('click', () => terminateCall(true));
-  $('callDataToggle').addEventListener('click', () => {
-    const d = $('callDataDetails');
-    const show = !d.classList.contains('show');
-    d.classList.toggle('show', show);
-    $('callDataToggle').textContent = show ? 'Hide' : 'Details';
-    if (show) $('callDataLog').scrollTop = $('callDataLog').scrollHeight;
-  });
 
   // Experimental Grid UI button toggles
   $('expMuteBtn').addEventListener('click', function(){
     this.classList.toggle('active');
-    if (callStream){
-      const track = callStream.getAudioTracks()[0];
+    if (micStream){
+      const track = micStream.getAudioTracks()[0];
       if (track) track.enabled = !this.classList.contains('active');
     }
     if (callActive) logCallData('note', this.classList.contains('active') ? 'mic muted' : 'mic unmuted');
@@ -3345,7 +3378,7 @@
       if (input.value !== v) input.value = v;
     });
   };
-  ['joinCode','newChatCode','scanManual','contactNumber'].forEach(id => cleanDigits($(id), id === 'contactNumber' ? 11 : 11));
+  ['joinCode','newChatCode','scanManual','contactNumber'].forEach(id => cleanDigits($(id), 11));
 
   $('joinStartBtn').addEventListener('click', startOwnChat);
   $('joinBtn').addEventListener('click', () => joinCode($('joinCode').value));
@@ -3370,7 +3403,7 @@
   $('soundToggle').addEventListener('change', () => { state.sound = $('soundToggle').checked; localStorage.setItem('ntfy_sound', state.sound ? '1' : '0'); });
   $('uiEmojiToggle').checked = state.showUiEmoji;
   $('uiEmojiToggle').addEventListener('change', () => { state.showUiEmoji = $('uiEmojiToggle').checked; localStorage.setItem('ntfy_ui_emoji', state.showUiEmoji ? '1' : '0'); document.body.classList.toggle('show-ui-emoji', state.showUiEmoji); });
-  
+
   // Experimental Features switch
   $('experimentalToggle').checked = state.experimental;
   $('experimentalToggle').addEventListener('change', () => {
@@ -3385,6 +3418,23 @@
     const r = await Notification.requestPermission();
     toast(r === 'granted' ? 'Notifications enabled' : 'Permission denied');
   });
+
+  // Microphone test
+  $('micTestBtn').addEventListener('click', async () => {
+    const note = $('micTestNote');
+    note.className = 'mic-note';
+    note.textContent = 'Requesting microphone… (look for the browser prompt)';
+    unlockAudio();
+    try {
+      await acquireMic();
+      note.className = 'mic-note ok';
+      note.textContent = 'Microphone works. You can start a call or record a voice note.';
+    } catch(err){
+      note.className = 'mic-note err';
+      note.textContent = micErrorText(err);
+    }
+  });
+
   $('regenBtn').addEventListener('click', () => {
     if (!confirm('Generate a new code?')) return;
     const old = ownCode();
@@ -3515,6 +3565,11 @@
       updateStatus();
     }
   });
+
+  /* Unlock audio on the first interaction so calls/ringtone behave. */
+  const unlockOnce = () => { unlockAudio(); };
+  document.addEventListener('pointerdown', unlockOnce, { passive: true });
+  document.addEventListener('keydown', unlockOnce, { passive: true });
 
   /* ================= INIT ================= */
   function buildSwatches(){
