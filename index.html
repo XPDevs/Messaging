@@ -52,6 +52,13 @@
   }
   button{font-family:inherit;font-size:inherit}
   button:not(:disabled){cursor:pointer}
+  button,input,textarea{ -webkit-tap-highlight-color:transparent }
+  button:focus-visible,input:focus-visible,textarea:focus-visible{
+    outline:2px solid var(--primary);outline-offset:2px
+  }
+  @media(prefers-reduced-motion:reduce){
+    *,*::before,*::after{scroll-behavior:auto !important;animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
+  }
   button:disabled{opacity:.5}
   svg{display:block}
   input,textarea{font-family:inherit}
@@ -708,6 +715,8 @@
 
   /* ===== Call data visibility ===== */
   .call-screen{overflow-y:auto}
+  /* Transport counters and packet logs are deliberately not exposed on the call screen. */
+  .call-data-strip,.call-data-details{display:none !important}
   .call-data-strip{
     display:flex;align-items:center;justify-content:center;gap:7px;flex-wrap:wrap;
     font-size:11.5px;line-height:1.4;color:var(--text);
@@ -720,6 +729,7 @@
     box-shadow:0 0 0 3px rgba(40,166,69,.16);flex-shrink:0}
   .call-data-strip .cds-dot.idle{background:#9aa0a6;box-shadow:none}
   .call-data-strip .cds-dot.err{background:#ff4d4d;box-shadow:0 0 0 3px rgba(255,77,77,.16)}
+  .call-data-toggle{display:none !important}
   .call-data-toggle{
     background:transparent;border:none;color:var(--primary);font-weight:700;
     font-size:11.5px;padding:2px 4px;border-radius:8px;
@@ -823,7 +833,7 @@
   <div class="join-card">
     <img src="https://xpdevs.github.io/logo/XPDevs.png" class="logo-icon" alt="ntfy Chat">
     <h1>Welcome to ntfy Chat</h1>
-    <p class="tagline">Your channel is created automatically. Pick a name, then share your number with people you trust.</p>
+    <p class="tagline">Set up your identity, then share your 11-digit channel number with people you want to message.</p>
 
     <label class="join-label" for="joinName">Display name</label>
     <input class="join-name" id="joinName" maxlength="40" placeholder="Your name" autocomplete="nickname">
@@ -844,7 +854,7 @@
     <input class="join-input" id="joinCode" inputmode="numeric" maxlength="11" placeholder="• • • • • • • • • • •" autocomplete="off">
     <button class="join-btn secondary" id="joinBtn">Connect</button>
 
-    <p class="join-note">Messages travel over public <b>ntfy.sh</b> topics. Media is kept by ntfy for about 3 hours and a copy is saved on this device.</p>
+    <p class="join-note"><b>How this works:</b> your 11-digit number is your ntfy.sh topic. Messages and call packets are delivered through ntfy.sh. Anyone who knows a topic number may be able to subscribe to it, so only share it with people you trust. Attachments are uploaded to ntfy.sh and may be temporary; received media is cached on this device when possible.</p>
   </div>
 </div>
 
@@ -899,10 +909,10 @@
   </div>
 
   <div class="call-actions-row">
-    <button class="call-action-btn accept" id="callAcceptBtn" style="display:none" title="Accept Call">
+    <button class="call-action-btn accept" id="callAcceptBtn" style="display:none" title="Accept Call" aria-label="Accept call">
       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.2 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72l.45 2.7a2 2 0 0 1-.57 1.73L7.2 9.94a16 16 0 0 0 6 6l1.79-1.79a2 2 0 0 1 1.73-.57l2.7.45a2 2 0 0 1 1.58 1.89z"/></svg>
     </button>
-    <button class="call-action-btn end" id="callEndBtn" title="End Call">
+    <button class="call-action-btn end" id="callEndBtn" title="End Call" aria-label="End call">
       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.6-3.33a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/><line x1="23" y1="1" x2="1" y2="23"/></svg>
     </button>
   </div>
@@ -1902,6 +1912,12 @@
 
   function ntfyUrl(code){ return 'https://ntfy.sh/' + encodeURIComponent(code); }
   function baseHeaders(){ const h = { 'Title': ownCode() }; if (urgentArmed) h['Priority'] = 'urgent'; return h; }
+  async function fetchWithTimeout(url, options, timeoutMs){
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), timeoutMs || 12000);
+    try { return await fetch(url, Object.assign({}, options || {}, { signal:ctl.signal })); }
+    finally { clearTimeout(timer); }
+  }
 
   async function sendControlEx(codeOrTopic, obj, opts){
     opts = opts || {};
@@ -1914,11 +1930,10 @@
     if (bodyBytes > 3900) return { id:null, error:'Payload too large (' + bodyBytes + ' B)', status:413 };
     const headers = { 'Title': ownCode() };
     if (opts.ephemeral) headers['Cache'] = 'no';
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), opts.timeout || 12000);
     try {
-      const ctl = new AbortController();
-      const timer = setTimeout(() => ctl.abort(), opts.timeout || 12000);
       const res = await fetch(ntfyUrl(topic), { method:'POST', body, headers, signal: ctl.signal });
-      clearTimeout(timer);
       if (!res.ok){
         const extra = await res.text().catch(() => '');
         return { id:null, error:'HTTP ' + res.status + (extra ? ': ' + extra.slice(0, 80) : ''), status:res.status };
@@ -1928,6 +1943,8 @@
       return { id:null, error:'ntfy did not return a message id' };
     } catch(err){
       return { id:null, error: err && err.name === 'AbortError' ? 'Request timed out' : ((err && err.message) || 'Network error') };
+    } finally {
+      clearTimeout(timer);
     }
   }
   async function sendControl(codeOrTopic, obj, ephemeral){
@@ -2203,10 +2220,7 @@
 
   async function postText(chat, body, msg, headers){
     try {
-      const ctl = new AbortController();
-      const timer = setTimeout(() => ctl.abort(), 20000);
-      const res = await fetch(ntfyUrl(chat.code), { method:'POST', body, headers, signal: ctl.signal });
-      clearTimeout(timer);
+      const res = await fetchWithTimeout(ntfyUrl(chat.code), { method:'POST', body, headers }, 20000);
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const j = await res.json().catch(() => null);
       if (j && j.id){ msg.eventId = j.id; seenIds.add(j.id); }
@@ -2238,17 +2252,11 @@
         const enc = await vaultEncryptBytes(pass, buf);
         meta.l = 1; meta.s = enc.salt; meta.i = enc.iv; meta.m = opts.mime || opts.blob.type || 'application/octet-stream';
         const h = baseHeaders(); h['Filename'] = 'locked.bin'; h['Message'] = attMeta(meta);
-        const ctl = new AbortController();
-        const timer = setTimeout(() => ctl.abort(), 60000);
-        res = await fetch(ntfyUrl(chat.code), { method:'PUT', body: new Blob([enc.ct], { type:'application/octet-stream' }), headers: h, signal: ctl.signal });
-        clearTimeout(timer);
+        res = await fetchWithTimeout(ntfyUrl(chat.code), { method:'PUT', body:new Blob([enc.ct], { type:'application/octet-stream' }), headers:h }, 60000);
         msg.locked = true;
       } else {
         const h = baseHeaders(); h['Filename'] = opts.fileName; h['Message'] = attMeta(meta);
-        const ctl = new AbortController();
-        const timer = setTimeout(() => ctl.abort(), 60000);
-        res = await fetch(ntfyUrl(chat.code), { method:'PUT', body: opts.blob, headers: h, signal: ctl.signal });
-        clearTimeout(timer);
+        res = await fetchWithTimeout(ntfyUrl(chat.code), { method:'PUT', body:opts.blob, headers:h }, 60000);
       }
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const j = await res.json().catch(() => null);
@@ -2424,7 +2432,9 @@
     return name;
   }
   function startOwnChat(){
-    saveDisplayName($('joinName') ? $('joinName').value : state.name);
+    const enteredName = $('joinName') ? $('joinName').value.trim() : state.name;
+    if (!enteredName){ toast('Enter a display name to continue'); $('joinName').focus(); return; }
+    saveDisplayName(enteredName);
     const code = ownCode();
     ensureOwnChat();
     localStorage.setItem('ntfy_joined', '1');
@@ -2436,8 +2446,8 @@
   }
   function joinCode(raw, name, silent){
     const code = String(raw || '').replace(/\D/g, '').slice(0, 11);
-    if (code.length !== 11){ toast('Enter a valid eleven digit number'); return false; }
-    if ($('joinName')) saveDisplayName($('joinName').value);
+    if (code.length !== 11){ toast('Enter a valid eleven digit number'); if ($('joinCode') && !silent) $('joinCode').focus(); return false; }
+    if ($('joinName') && $('joinName').value.trim()) saveDisplayName($('joinName').value);
     let c = state.chats.find(x => x.code === code);
     if (!c){
       c = { code, title: name || (code === ownCode() ? 'My channel' : ('Chat ' + code)), messages:[], unread:0, own: code === ownCode() };
@@ -2724,8 +2734,25 @@
     if (chatCode && state.activeCode === chatCode) renderMessages();
   }
 
+  function primeCallAudio(){
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) throw new Error('Web Audio is not supported');
+    try {
+      if (!callCaptureCtx || callCaptureCtx.state === 'closed'){
+        try { callCaptureCtx = new AC({ sampleRate:CALL_SAMPLE_RATE }); }
+        catch(_) { callCaptureCtx = new AC(); }
+      }
+      if (callCaptureCtx.state === 'suspended') callCaptureCtx.resume().catch(() => {});
+      const playback = callPlaybackContext();
+      if (playback && playback.state === 'suspended') playback.resume().catch(() => {});
+    } catch(err) {
+      throw new Error('Could not initialise call audio: ' + (err.message || 'audio unavailable'));
+    }
+  }
+
   async function initiateCall(){
     if (callActive){ toast('You are already in a call'); return; }
+    try { primeCallAudio(); } catch(err){ toast(err.message); return; }
     const chat = activeChat();
     if (!chat){ toast('Open a conversation first'); return; }
     if (chat.group){ toast('Calls work in one to one chats only'); return; }
@@ -2829,6 +2856,7 @@
 
   async function acceptCall(){
     if (!callActive || callConnected) return;
+    try { primeCallAudio(); } catch(err){ toast(err.message); return; }
     const chat = state.chats.find(c => c.code === callChatCode) || activeChat();
     if (!chat) return;
     if (callIncomingEncrypted){
@@ -2919,16 +2947,26 @@
   }
 
   async function startCallCapture(){
-    if (callCaptureCtx) return;
+    if (callProcessor && callStream) return;
     const stream = await navigator.mediaDevices.getUserMedia({
       audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true, channelCount:1 }
     });
     const AC = window.AudioContext || window.webkitAudioContext;
-    let ctx;
-    try { ctx = new AC({ sampleRate: CALL_SAMPLE_RATE }); }
-    catch(_) { ctx = new AC(); }
-    await ctx.resume().catch(() => {});
-    if (!ctx.createScriptProcessor) throw new Error('audio capture is not supported');
+    let ctx = callCaptureCtx;
+    try {
+      if (!ctx || ctx.state === 'closed'){
+        try { ctx = new AC({ sampleRate:CALL_SAMPLE_RATE }); }
+        catch(_) { ctx = new AC(); }
+        callCaptureCtx = ctx;
+      }
+      await ctx.resume();
+      if (ctx.state !== 'running') throw new Error('audio context is suspended; tap the call screen and try again');
+      if (!ctx.createScriptProcessor) throw new Error('audio capture is not supported');
+    } catch(err) {
+      stream.getTracks().forEach(track => track.stop());
+      if (ctx && ctx !== callCaptureCtx) try { ctx.close(); } catch(_){}
+      throw err;
+    }
     const source = ctx.createMediaStreamSource(stream);
     const processor = ctx.createScriptProcessor(2048, 1, 1);
     const mute = ctx.createGain();
@@ -2936,11 +2974,13 @@
     const ratio = ctx.sampleRate / CALL_SAMPLE_RATE;
     let phase = 0, prev = 0;
     let chunk = new Uint8Array(CALL_CHUNK_BYTES), fill = 0;
+    let capturedSamples = 0;
 
     processor.onaudioprocess = (ev) => {
       if (!callActive || !callConnected) return;
       const input = ev.inputBuffer.getChannelData(0);
       const n = input.length;
+      if (!n) return;
       let idx = phase;
       while (idx < n){
         const i0 = Math.floor(idx);
@@ -2952,6 +2992,7 @@
         else s1 = s0;
         const sample = s0 + (s1 - s0) * frac;
         chunk[fill++] = linearToUlaw(Math.max(-32768, Math.min(32767, Math.round(sample * 32767))));
+        capturedSamples++;
         if (fill >= chunk.length){
           enqueueCallChunk(chunk.slice(0));
           fill = 0;
@@ -2960,6 +3001,10 @@
       }
       phase = idx - n;
       prev = input[n - 1] || 0;
+      if (capturedSamples >= CALL_SAMPLE_RATE * 2){
+        capturedSamples = 0;
+        if (!callTxPumping && !callTxQueue.length) logCallData('note', 'microphone capture active');
+      }
     };
 
     source.connect(processor);
@@ -2988,10 +3033,15 @@
 
   function enqueueCallChunk(bytes){
     if (!bytes || !bytes.length || !callActive || !callConnected) return;
-    if (callTxQueue.length > 12){
-      const dropped = callTxQueue.length - 12;
+    if (callTxQueue.length >= 12){
+      const dropped = callTxQueue.length - 11;
       callTxQueue.splice(0, dropped);
-      callError('network slow · dropped ' + dropped + ' audio packet' + (dropped === 1 ? '' : 's'));
+      if (!callStats.queueDropNotified){
+        callStats.queueDropNotified = true;
+        callError('network is slower than the audio stream; older audio packets were discarded');
+      }
+    } else if (callTxQueue.length < 4) {
+      callStats.queueDropNotified = false;
     }
     callTxQueue.push(bytes);
     pumpCallSendQueue();
@@ -2999,6 +3049,7 @@
 
   async function pumpCallSendQueue(){
     if (callTxPumping) return;
+    if (!callChatCode){ callError('missing ntfy destination topic'); return; }
     callTxPumping = true;
     try {
       while (callTxQueue.length && callActive && callConnected){
@@ -3346,9 +3397,39 @@
     saveChats(); subscribe(nc); renderChatList(); renderMessages();
     toast('New code: ' + nc);
   });
-  $('resetBtn').addEventListener('click', () => {
-    if (!confirm('Reset device?')) return;
-    localStorage.clear(); location.reload();
+  $('resetBtn').addEventListener('click', async () => {
+    if (!confirm('Reset ntfy Chat on this device? This deletes saved chats, contacts, identity and preferences from this browser. It cannot delete messages already delivered to ntfy.sh or other devices.')) return;
+    const button = $('resetBtn');
+    button.disabled = true;
+    button.textContent = 'Resetting…';
+    try {
+      try { terminateCall(false, 'cancelled'); } catch(_){}
+      try { stopRecording(false); } catch(_){}
+      try { closeScanner(); } catch(_){}
+      Object.values(globalStreams || {}).forEach(es => { try { es.close(); } catch(_){} });
+      Object.keys(globalStreams || {}).forEach(k => { try { delete globalStreams[k]; } catch(_){} });
+      Object.keys(localStorage).filter(k => k.startsWith('ntfy_')).forEach(k => localStorage.removeItem(k));
+      Object.keys(sessionStorage).filter(k => k.startsWith('ntfy_')).forEach(k => sessionStorage.removeItem(k));
+      if ('caches' in window){
+        const names = await caches.keys();
+        await Promise.all(names.filter(n => /ntfy[-_ ]?chat/i.test(n)).map(n => caches.delete(n)));
+      }
+      if ('serviceWorker' in navigator){
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations
+          .filter(r => {
+            try { return new URL(r.scope).pathname.startsWith(location.pathname.replace(/[^/]*$/, '')); }
+            catch(_) { return false; }
+          })
+          .map(r => r.unregister()));
+      }
+      const cleanUrl = location.origin + location.pathname;
+      location.replace(cleanUrl);
+    } catch(err) {
+      button.disabled = false;
+      button.textContent = 'Reset device';
+      toast('Reset could not finish: ' + (err.message || 'unknown error'));
+    }
   });
 
   $('searchInput').addEventListener('input', e => { state.search = e.target.value; renderChatList(); renderMessages(); });
