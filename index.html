@@ -1226,6 +1226,7 @@
   const VAULT_PREFIX = 'VLT1|';
   const ATT_PREFIX   = 'ATT1|';
   const CTL_MAGIC    = '@@ntfy#';
+  const LOCAL_ONLY   = (location.protocol === 'file:');
   const CTL_RAW      = '@@ntfyJ#';
   const QUICK_REACT  = ['👍','❤️','😂','😮','😢','🙏','🔥','✅'];
   const EMOJIS = ['😀','😁','😂','🤣','😊','😍','😘','😎','🤔','😅','😇','🙃','😉','😌','😜','🤗','🤩','😢','😭','😡','🥺','😴','🤤','🤒','🥳','😱','🤯','🤝','🙏','👍','👎','👏','🙌','💪','🤙','✌️','🫶','❤️','🧡','💛','💚','💙','💜','🖤','💔','💯','🔥','✨','🎉','🎂','☕','🍕','⚽','🚀','🌈','⭐','📍','📷','🎤','📎','🔒','🚨','✅','❌'];
@@ -1338,6 +1339,8 @@
     if (c.status === 'missed') return c.dir === 'in' ? 'Missed voice call' : 'No answer';
     if (c.status === 'declined') return 'Call declined';
     if (c.status === 'cancelled') return 'Call cancelled';
+    if (c.status === 'failed') return 'Call failed';
+    if (c.status === 'ended') return base + ' · ended';
     const dur = c.duration != null ? ' · ' + callClock(c.duration) : '';
     const data = (c.sentBytes || c.recvBytes) ? ' · ' + humanSize((c.sentBytes || 0) + (c.recvBytes || 0)) + ' of audio' : '';
     return base + dur + data;
@@ -1927,12 +1930,12 @@
     const body = state.name + ': ' + (opts.raw ? CTL_RAW + json : CTL_MAGIC + b64EncodeUtf8(json));
     const bodyBytes = new TextEncoder().encode(body).length;
     if (bodyBytes > 3900) return { id:null, error:'Payload too large (' + bodyBytes + ' B)', status:413 };
-    const headers = { 'Title': ownCode() };
-    if (opts.ephemeral) headers['Cache'] = 'no';
+    if (LOCAL_ONLY) return { id:null, error:'Local file mode. Use a local server or https.' };
+    const qs = '?title=' + encodeURIComponent(ownCode()) + (opts.ephemeral ? '&cache=no' : '');
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), opts.timeout || 12000);
     try {
-      const res = await fetch(ntfyUrl(topic), { method:'POST', body, headers, signal: ctl.signal });
+      const res = await fetch(ntfyUrl(topic) + qs, { method:'POST', body, signal: ctl.signal });
       if (!res.ok){
         const extra = await res.text().catch(() => '');
         return { id:null, error:'HTTP ' + res.status + (extra ? ': ' + extra.slice(0, 80) : ''), status:res.status };
@@ -1969,6 +1972,7 @@
   function subscribeAll(){ state.chats.forEach(c => subscribe(c.code)); }
 
   function subscribe(code){
+    if (LOCAL_ONLY) return;
     // Close any existing stream for this topic.
     if (globalStreams[code]){
       try { globalStreams[code].close(); } catch(_){}
@@ -2134,6 +2138,9 @@
         deliver(chat, msg); notifyMsg(msg); return;
       }
       case 'v_offer': { if (typeof handleIncomingCallOffer === 'function') handleIncomingCallOffer(chat, from, c); return; }
+      case 'w_offer': { if (typeof handleCallOfferSignal === 'function') handleCallOfferSignal(chat, from, c); return; }
+      case 'w_answer': { if (typeof handleCallAnswerSignal === 'function') handleCallAnswerSignal(chat, from, c); return; }
+      case 'w_ice': { if (typeof handleCallIceSignal === 'function') handleCallIceSignal(chat, from, c); return; }
       case 'v_audio': { if (typeof receiveCallAudio === 'function') receiveCallAudio(chat, from, c); return; }
       case 'v_chunk': { if (typeof receiveVoiceChunk === 'function') receiveVoiceChunk(chat, from, c.data, c.pass); return; }
       case 'v_accept': { if (typeof handleCallAccepted === 'function') handleCallAccepted(chat, from); return; }
@@ -2318,6 +2325,7 @@
   }
 
   async function postText(chat, body, msg, headers){
+    if (LOCAL_ONLY){ msg.status = 'failed'; toast('Local file mode. Run a local server to send.'); saveChats(); rerender(); return; }
     try {
       const res = await fetchWithTimeout(ntfyUrl(chat.code), { method:'POST', body, headers }, 20000);
       if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -3454,11 +3462,10 @@
   // Experimental Grid UI button toggles
   $('expMuteBtn').addEventListener('click', function(){
     this.classList.toggle('active');
-    if (micStream){
-      const track = micStream.getAudioTracks()[0];
-      if (track) track.enabled = !this.classList.contains('active');
-    }
-    if (callActive) logCallData('note', this.classList.contains('active') ? 'mic muted' : 'mic unmuted');
+    const muted = this.classList.contains('active');
+    const track = rtcLocal && rtcLocal.getAudioTracks()[0];
+    if (track) track.enabled = !muted;
+    if (callActive) logCallData('note', muted ? 'mic muted' : 'mic unmuted');
   });
   $('expKeypadBtn').addEventListener('click', function(){ this.classList.toggle('active'); });
   $('expSpeakerBtn').addEventListener('click', function(){ this.classList.toggle('active'); });
@@ -3790,6 +3797,356 @@
   });
 
   subscribeAll();
+/* ===== WebRTC call engine. Overrides the chunked audio transport. ===== */
+let rtcPc = null, rtcLocal = null, rtcRemote = null, rtcIce = [], rtcStatsTimer = null, rtcOffer = null, rtcParts = {}, rtcMaxed = false;
+
+function rtcSupported(){
+  return !!(window.RTCPeerConnection && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+}
+function rtcSend(obj){
+  if (!callChatCode) return Promise.resolve({ id:null });
+  return sendControlEx(callChatCode, obj, { ephemeral:true, raw:true, timeout:9000 });
+}
+function rtcSetState(text){ const el = $('callStateText'); if (el) el.textContent = text; }
+
+function rtcDesc(x){
+  try { return (typeof RTCSessionDescription === 'function') ? new RTCSessionDescription(x) : x; }
+  catch(_) { return x; }
+}
+function rtcCollect(kind, msg){
+  if (!msg || !msg.sdp) return null;
+  if (!msg.n || msg.n <= 1) return { type: msg.type || (kind === 'offer' ? 'offer' : 'answer'), sdp: msg.sdp };
+  const key = kind + ':' + (msg.type || '');
+  rtcParts[key] = rtcParts[key] || { n: msg.n, arr: [] };
+  rtcParts[key].arr[msg.i] = msg.sdp;
+  const have = rtcParts[key].arr.filter(function(x){ return typeof x === 'string'; }).length;
+  if (have < rtcParts[key].n) return null;
+  const sdp = rtcParts[key].arr.join('');
+  delete rtcParts[key];
+  return { type: msg.type || (kind === 'offer' ? 'offer' : 'answer'), sdp: sdp };
+}
+function rtcSendDesc(kind, desc){
+  const sdp = (desc && desc.sdp) || '';
+  const size = 2400;
+  const parts = [];
+  for (let i = 0; i < sdp.length; i += size) parts.push(sdp.slice(i, i + size));
+  parts.forEach(function(part, idx){
+    rtcSend({ t:kind, type:desc.type, sdp:part, i:idx, n:parts.length });
+  });
+}
+function rtcCreatePeer(){
+  const pc = new RTCPeerConnection({ iceServers: [
+    { urls:'stun:stun.l.google.com:19302' },
+    { urls:'stun:stun1.l.google.com:19302' },
+    { urls:'stun:stun.cloudflare.com:3478' }
+  ]});
+  rtcPc = pc;
+  if (rtcLocal){
+    rtcLocal.getTracks().forEach(function(t){ try { pc.addTrack(t, rtcLocal); } catch(_){} });
+  }
+  pc.onicecandidate = function(e){ if (e.candidate) rtcSend({ t:'w_ice', c:e.candidate }); };
+  pc.ontrack = function(e){
+    rtcRemote = (e.streams && e.streams[0]) ? e.streams[0] : new MediaStream([e.track]);
+    const a = $('remoteAudio');
+    if (a){ a.srcObject = rtcRemote; a.play().catch(function(){}); }
+    logCallData('note', 'remote audio attached');
+  };
+  pc.onconnectionstatechange = function(){
+    const s = pc.connectionState;
+    if (s === 'connected') rtcOnConnected();
+    else if (s === 'failed'){
+      callError('connection failed');
+      setTimeout(function(){ if (callActive) terminateCall(true, 'failed'); }, 900);
+    } else if (s === 'disconnected'){
+      rtcSetState('Reconnecting…');
+    }
+  };
+  return pc;
+}
+function rtcStartStats(){
+  clearInterval(rtcStatsTimer);
+  rtcStatsTimer = setInterval(async function(){
+    if (!rtcPc || !callConnected) return;
+    try {
+      const report = await rtcPc.getStats();
+      let inB = 0, outB = 0, inP = 0, outP = 0;
+      report.forEach(function(r){
+        if (r.type === 'inbound-rtp' && r.kind === 'audio'){ inB = r.bytesReceived || 0; inP = r.packetsReceived || 0; }
+        if (r.type === 'outbound-rtp' && r.kind === 'audio'){ outB = r.bytesSent || 0; outP = r.packetsSent || 0; }
+      });
+      callStats.recvBytes = inB; callStats.sentBytes = outB;
+      callStats.recvChunks = inP; callStats.sentChunks = outP;
+      updateCallDataUI();
+    } catch(_){}
+  }, 1000);
+}
+function rtcOnConnected(){
+  if (callConnected) return;
+  callConnected = true;
+  callStats.startedAt = Date.now();
+  if (typeof updateCallMessage === 'function') updateCallMessage({ status:'connected' });
+  stopRingtone();
+  rtcSetState('In call');
+  const t = $('callTimerDisplay');
+  if (t) t.style.display = 'block';
+  startCallTimer();
+  logCallData('note', 'connected, peer to peer');
+  const row = document.querySelector('#callDataDetails .cdp-row b');
+  if (row) row.textContent = 'WebRTC peer to peer';
+  const codec = $('callCodecInfo');
+  if (codec) codec.textContent = 'Opus 48 kHz';
+  const enc = $('callEncInfo');
+  if (enc) enc.textContent = 'DTLS SRTP';
+  updateCallDataUI();
+  rtcStartStats();
+}
+function startCallTimer(){
+  clearInterval(callTimerInterval);
+  callSeconds = 0;
+  callTimerInterval = setInterval(function(){
+    callSeconds++;
+    updateCallTimerUI();
+    if (callSeconds >= MAX_CALL_SECONDS && !rtcMaxed){
+      rtcMaxed = true;
+      toast('Call limit reached, 5 minutes');
+      terminateCall(true, 'completed');
+    }
+  }, 1000);
+  updateCallTimerUI();
+}
+function updateCallTimerUI(){
+  const left = Math.max(0, MAX_CALL_SECONDS - callSeconds);
+  const m = String(Math.floor(left / 60)).padStart(2, '0');
+  const s = String(left % 60).padStart(2, '0');
+  const el = $('callTimerDisplay');
+  if (el) el.textContent = m + ':' + s + ' left';
+}
+function handleCallIceSignal(chat, from, c){
+  if (!c || !c.c) return;
+  if (rtcPc && rtcPc.remoteDescription && rtcPc.remoteDescription.type){
+    rtcPc.addIceCandidate(c.c).catch(function(){});
+  } else {
+    rtcIce.push(c.c);
+  }
+}
+async function handleCallAnswerSignal(chat, from, c){
+  if (!rtcPc || callDirection !== 'out') return;
+  const desc = rtcCollect('answer', c);
+  if (!desc) return;
+  try {
+    await rtcPc.setRemoteDescription(rtcDesc(desc));
+    while (rtcIce.length){ try { await rtcPc.addIceCandidate(rtcIce.shift()); } catch(_){} }
+    rtcSetState('Connecting…');
+  } catch(err){
+    callError('could not apply the answer');
+  }
+}
+
+async function initiateCall(){
+  if (callActive){ toast('You are already in a call'); return; }
+  if (mediaRecorder && mediaRecorder.state === 'recording'){ toast('Finish the voice note first'); return; }
+  const chat = activeChat();
+  if (!chat){ toast('Open a conversation first'); return; }
+  if (chat.group){ toast('Calls work in one to one chats only'); return; }
+  if (!rtcSupported()){ toast('This browser cannot make calls. Use Chrome, Edge, Firefox or Safari on https.'); return; }
+  if (!secureOriginOk()){ toast(micBlockedReason(), 6000); return; }
+
+  let pass = null;
+  if (lockArmed && vaultAvailable()){
+    pass = await askPasscode({ title:'Encrypted Call', desc:'Enter a passcode. The other side will be asked for it.', ok:'Start Call' });
+    if (pass === null) return;
+  }
+
+  let stream;
+  try { stream = await acquireMic(); }
+  catch(err){ toast(micErrorText(err), 6000); return; }
+
+  callChatCode = chat.code;
+  callDirection = 'out';
+  callPasscode = pass || null;
+  callIncomingEncrypted = false;
+  callActive = true;
+  callConnected = false;
+  callSeconds = 0;
+  rtcMaxed = false;
+  rtcOffer = null;
+  rtcIce = [];
+  rtcParts = {};
+  rtcLocal = stream;
+  rtcRemote = null;
+
+  resetCallDataUI();
+  prepareCallUI(true);
+  $('callScreen').classList.add('show');
+  $('callPeerName').textContent = chat.title || chat.code;
+  $('callAvatar').textContent = avatarText(chat.title || chat.code);
+  rtcSetState(callPasscode ? 'Calling, encrypted' : 'Calling');
+  $('callAcceptBtn').style.display = 'none';
+  $('callTimerDisplay').style.display = 'none';
+  updateCallTimerUI();
+  callMsg = null;
+  addCallMessage('out');
+  updateCallDataUI();
+  playRingtone();
+
+  try {
+    rtcCreatePeer();
+    const offer = await rtcPc.createOffer({ offerToReceiveAudio:true, offerToReceiveVideo:false });
+    await rtcPc.setLocalDescription(offer);
+    rtcOffer = rtcPc.localDescription;
+    rtcSendDesc('w_offer', rtcOffer);
+    logCallData('out', 'offer sent');
+  } catch(err){
+    callError('could not start the call');
+    toast('Could not start the call');
+    terminateCall(false, 'failed');
+    return;
+  }
+
+  clearTimeout(callTimeout);
+  callTimeout = setTimeout(function(){
+    if (callActive && !callConnected){
+      toast('No answer');
+      terminateCall(true, 'missed');
+    }
+  }, 45000);
+}
+
+function handleCallOfferSignal(chat, from, c){
+  const desc = rtcCollect('offer', c);
+  if (!desc) return;
+  if (from === state.name && chat.code !== callChatCode) return;
+
+  if (callActive){
+    if (callChatCode === chat.code && callDirection === 'in' && !callConnected){ rtcOffer = desc; return; }
+    sendControlEx(chat.code, { t:'v_reject' }, { ephemeral:true, raw:true });
+    return;
+  }
+
+  callChatCode = chat.code;
+  callDirection = 'in';
+  callIncomingEncrypted = !!c.pass;
+  callPasscode = null;
+  callActive = true;
+  callConnected = false;
+  callSeconds = 0;
+  rtcMaxed = false;
+  rtcOffer = desc;
+  rtcIce = [];
+  rtcParts = {};
+  rtcLocal = null;
+  rtcRemote = null;
+
+  resetCallDataUI();
+  prepareCallUI(true);
+  $('callScreen').classList.add('show');
+  $('callPeerName').textContent = chat.title || chat.code;
+  $('callAvatar').textContent = avatarText(chat.title || chat.code);
+  rtcSetState('Incoming call from ' + from);
+  $('callAcceptBtn').style.display = 'flex';
+  $('callTimerDisplay').style.display = 'none';
+  updateCallTimerUI();
+  callMsg = null;
+  addCallMessage('in');
+  updateCallDataUI();
+  playRingtone();
+
+  clearTimeout(callTimeout);
+  callTimeout = setTimeout(function(){
+    if (callActive && !callConnected){
+      toast('Missed call');
+      terminateCall(true, 'missed');
+    }
+  }, 45000);
+}
+
+async function acceptCall(){
+  if (!callActive || callDirection !== 'in' || !rtcOffer) return;
+  let stream;
+  try { stream = await acquireMic(); }
+  catch(err){ toast(micErrorText(err), 6000); terminateCall(true, 'failed'); return; }
+
+  rtcLocal = stream;
+  try {
+    rtcCreatePeer();
+    await rtcPc.setRemoteDescription(rtcDesc(rtcOffer));
+    while (rtcIce.length){ try { await rtcPc.addIceCandidate(rtcIce.shift()); } catch(_){} }
+    const answer = await rtcPc.createAnswer();
+    await rtcPc.setLocalDescription(answer);
+    rtcSendDesc('w_answer', rtcPc.localDescription);
+    stopRingtone();
+    rtcSetState('Connecting…');
+    logCallData('in', 'answer sent');
+  } catch(err){
+    callError('could not answer the call');
+    terminateCall(true, 'failed');
+  }
+}
+
+function handleIncomingCallOffer(){ rtcSend({ t:'v_reject' }); }
+function handleCallAccepted(){ /* answers arrive as w_answer */ }
+function handleCallRejected(chat, from){
+  if (!callActive) return;
+  toast('Call declined');
+  terminateCall(false, 'declined');
+}
+function handleCallEndSignal(){
+  if (!callActive) return;
+  toast('Call ended');
+  terminateCall(false, callConnected ? 'completed' : 'ended');
+}
+function receiveCallAudio(){ /* legacy path retired */ }
+function receiveVoiceChunk(){ /* legacy path retired */ }
+
+function terminateCall(sendSignal, status){
+  const wasActive = callActive;
+  const wasConnected = callConnected;
+  const chatCode = callChatCode;
+  if (sendSignal && chatCode) rtcSend({ t:'v_end' });
+
+  try {
+    if (rtcPc){
+      rtcPc.onicecandidate = null;
+      rtcPc.ontrack = null;
+      rtcPc.onconnectionstatechange = null;
+      rtcPc.close();
+    }
+  } catch(_){}
+  rtcPc = null;
+
+  if (rtcLocal){
+    try { rtcLocal.getTracks().forEach(function(t){ t.stop(); }); } catch(_){}
+    rtcLocal = null;
+  }
+  try { stopCallCapture(); } catch(_){}
+  try { releaseMic(); } catch(_){}
+
+  clearInterval(callTimerInterval); callTimerInterval = null;
+  clearInterval(rtcStatsTimer); rtcStatsTimer = null;
+  clearTimeout(callTimeout); callTimeout = null;
+  stopRingtone();
+
+  callActive = false;
+  callConnected = false;
+  callSeconds = 0;
+  rtcOffer = null;
+  rtcIce = [];
+  rtcParts = {};
+
+  const a = $('remoteAudio');
+  if (a){ try { a.pause(); } catch(_){} a.srcObject = null; }
+  $('callScreen').classList.remove('show', 'exp-call-ui', 'ringing');
+  $('callAcceptBtn').style.display = 'none';
+  const t = $('callTimerDisplay');
+  if (t) t.style.display = 'none';
+
+  if (wasActive){
+    finalizeCallMessage(status || (wasConnected ? 'completed' : 'missed'));
+  }
+  callChatCode = null;
+  updateCallDataUI();
+}
+
   renderChatList();
   renderMessages();
 </script>
