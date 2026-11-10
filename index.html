@@ -563,6 +563,24 @@
   .qr-wrap .qr-code{font-size:1.5rem;font-weight:800;letter-spacing:.25em;margin-top:10px}
   #scanVideo{width:100%;max-height:52vh;border-radius:16px;background:#000;object-fit:cover}
 
+  /* ===== Fullscreen Calling Screen ===== */
+  .call-screen{
+    position:fixed;inset:0;background:var(--bg);z-index:30000;
+    display:none;flex-direction:column;align-items:center;justify-content:space-between;
+    padding:40px 20px;text-align:center;animation:messagePop .3s ease;
+  }
+  .call-screen.show{display:flex}
+  .call-user-info{display:flex;flex-direction:column;align-items:center;gap:12px;margin-top:40px}
+  .call-avatar{width:96px;height:96px;border-radius:50%;background:linear-gradient(135deg,#007bff,#0056b3);color:#fff;font-size:32px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 25px rgba(0,0,0,0.2)}
+  .call-name{font-size:1.5rem;font-weight:700}
+  .call-state-text{font-size:1rem;color:#70757a}
+  .call-timer-display{font-size:2rem;font-weight:800;color:var(--primary);letter-spacing:0.05em;margin:10px 0}
+  .call-actions-row{display:flex;gap:24px;align-items:center;margin-bottom:40px}
+  .call-action-btn{width:64px;height:64px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;font-size:24px;color:#fff;transition:0.2s ease}
+  .call-action-btn.end{background:#dc3545}
+  .call-action-btn.accept{background:#28a645}
+  .call-action-btn:hover{transform:scale(1.1);filter:brightness(0.9)}
+
   @keyframes messagePop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
   @keyframes flash{0%{box-shadow:0 0 0 0 rgba(var(--primary-rgb),0.5)}100%{box-shadow:0 0 0 14px rgba(var(--primary-rgb),0)}}
   @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
@@ -603,10 +621,8 @@
   .people-contact strong{display:block;font-size:14px}
   .people-contact small{display:block;color:#888;font-size:12px}
   .people-contact button{border:1px solid var(--border);background:var(--input-bg);color:var(--text);padding:7px 10px;border-radius:9px}
-  .call-status{padding:12px;border-radius:12px;background:var(--input-bg);font-size:14px;margin-bottom:12px}
-  .call-timer{font-size:18px;font-weight:bold;color:var(--primary);margin-top:8px}
   body:not(.show-ui-emoji) #msgReactRow{display:none}
-  #remoteAudio{width:100%;margin-top:12px}
+  #remoteAudio{display:none}
   .sidebar-footer{gap:8px}
   .sidebar-footer .new-item-btn{font-size:12px;padding:9px 12px}
   @media(max-width:900px){.sidebar-footer .new-item-btn{flex:1}}
@@ -635,6 +651,25 @@
         <button class="link-btn" id="joinStartBtn">Start chatting</button>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ===================== FULLSCREEN CALL SCREEN ===================== -->
+<div class="call-screen" id="callScreen">
+  <div class="call-user-info">
+    <div class="call-avatar" id="callAvatar">?</div>
+    <div class="call-name" id="callPeerName">Calling...</div>
+    <div class="call-state-text" id="callStateText">Ringing...</div>
+    <div class="call-timer-display" id="callTimerDisplay" style="display:none">00:00 / 05:00</div>
+  </div>
+  <audio id="remoteAudio" autoplay playsinline></audio>
+  <div class="call-actions-row">
+    <button class="call-action-btn accept" id="callAcceptBtn" style="display:none" title="Accept Call">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.2 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72l.45 2.7a2 2 0 0 1-.57 1.73L7.2 9.94a16 16 0 0 0 6 6l1.79-1.79a2 2 0 0 1 1.73-.57l2.7.45a2 2 0 0 1 1.58 1.89z"/></svg>
+    </button>
+    <button class="call-action-btn end" id="callEndBtn" title="End Call">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.6-3.33a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/><line x1="23" y1="1" x2="1" y2="23"/></svg>
+    </button>
   </div>
 </div>
 
@@ -705,7 +740,7 @@
           <span class="dot" id="dot"></span>
           <span id="statusText">Connecting…</span>
         </span>
-        <button class="icon-btn" id="callBtn" title="Audio Call (ntfy stream)" aria-label="Start audio call">
+        <button class="icon-btn" id="callBtn" title="Voice Call" aria-label="Start voice call">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.2 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72l.45 2.7a2 2 0 0 1-.57 1.73L7.2 9.94a16 16 0 0 0 6 6l1.79-1.79a2 2 0 0 1 1.73-.57l2.7.45a2 2 0 0 1 1.58 1.89z"/></svg>
         </button>
         <button class="icon-btn" id="qrBtn" title="Share / scan code" aria-label="Share or scan code">
@@ -812,21 +847,6 @@
     <div class="modal-actions">
       <button class="cancel" id="groupCancel">Cancel</button>
       <button class="confirm" id="groupCreate">Create group</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal" id="callModal">
-  <div class="modal-content">
-    <h3>Experimental ntfy Voice Call</h3>
-    <p>Audio is converted to machine code, encrypted, and sent over the public ntfy topic. Limited to 5 minutes maximum.</p>
-    <div id="callStatus" class="call-status">Call is not active.</div>
-    <div id="callTimer" class="call-timer" style="display:none">00:00 / 05:00</div>
-    <audio id="remoteAudio" autoplay playsinline style="display:none"></audio>
-    <div class="modal-actions">
-      <button class="cancel" id="callClose">Close</button>
-      <button class="confirm" id="callStart">Start Call</button>
-      <button class="settings-btn danger" id="callEnd" style="width:auto;display:none">End Call</button>
     </div>
   </div>
 </div>
@@ -1231,9 +1251,8 @@
           e.stopPropagation(); dd.classList.remove('show');
           if (!confirm('Delete this chat?')) return;
           state.chats = state.chats.filter(x => x.code !== c.code);
-          if (streams[c.code]){ streams[c.code].close(); delete streams[c.code]; }
           if (state.activeCode === c.code) state.activeCode = (state.chats[0] || {}).code;
-          saveChats(); subscribeAll(); renderChatList(); renderMessages();
+          saveChats(); renderChatList(); renderMessages();
         });
         dd.appendChild(ren); dd.appendChild(del);
       }
@@ -1531,13 +1550,14 @@
   function ntfyUrl(code){ return 'https://ntfy.sh/' + encodeURIComponent(code); }
   function baseHeaders(){ const h = { 'Title': ownCode() }; if (urgentArmed) h['Priority'] = 'urgent'; return h; }
 
-  async function sendControl(obj, ephemeral){
-    const chat = activeChat(); if (!chat) return null;
+  async function sendControl(codeOrTopic, obj, ephemeral){
+    const topic = codeOrTopic || (activeChat() ? activeChat().code : null);
+    if (!topic) return null;
     const body = state.name + ': ' + CTL_MAGIC + b64EncodeUtf8(JSON.stringify(obj));
     const headers = { 'Title': ownCode() };
     if (ephemeral) headers['Cache'] = 'no';
     try {
-      const res = await fetch(ntfyUrl(chat.code), { method:'POST', body, headers });
+      const res = await fetch(ntfyUrl(topic), { method:'POST', body, headers });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const j = await res.json().catch(() => null);
       if (j && j.id){ seenIds.add(j.id); return j.id; }
@@ -1557,12 +1577,16 @@
     return { name, text };
   }
 
-  /* ---------- streaming ---------- */
-  function subscribeAll(){ state.chats.forEach(c => subscribe(c.code)); }
+  /* ---------- streaming (Global background polling / SSE for ALL chats) ---------- */
+  const globalStreams = {};
+  function subscribeAll(){
+    state.chats.forEach(c => subscribe(c.code));
+  }
   function subscribe(code){
-    if (streams[code]) return;
+    if (globalStreams[code]) return;
     const es = new EventSource('https://ntfy.sh/' + encodeURIComponent(code) + '/sse');
-    streams[code] = es;
+    globalStreams[code] = es;
+    if (code === state.activeCode) streams[code] = es;
     es.onopen = updateStatus;
     es.onmessage = (e) => handleEvent(code, e);
     es.onerror = updateStatus;
@@ -1575,7 +1599,7 @@
     saveChats();
     renderChatList();
     if (state.activeCode === chat.code) renderMessages();
-    if (focused && msg.eventId) sendControl({ t:'s', id: msg.eventId }, true);
+    if (focused && msg.eventId) sendControl(chat.code, { t:'s', id: msg.eventId }, true);
   }
 
   function rerender(){ renderChatList(); renderMessages(); }
@@ -1605,11 +1629,15 @@
         deliver(chat, msg); notifyMsg(msg); return;
       }
       case 'v_chunk': {
-        if (typeof receiveVoiceChunk === 'function') receiveVoiceChunk(from, c.data, c.pass);
+        if (typeof receiveVoiceChunk === 'function') receiveVoiceChunk(chat, from, c.data, c.pass);
+        return;
+      }
+      case 'v_accept': {
+        if (typeof handleCallAccepted === 'function') handleCallAccepted(chat, from);
         return;
       }
       case 'v_end': {
-        if (typeof handleCallEndSignal === 'function') handleCallEndSignal(from);
+        if (typeof handleCallEndSignal === 'function') handleCallEndSignal(chat, from);
         return;
       }
     }
@@ -1623,8 +1651,14 @@
     if (ev.id && seenIds.has(ev.id)) return;
     if (ev.title && String(ev.title).trim() === ownCode()){ if (ev.id) seenIds.add(ev.id); return; }
 
-    const chat = state.chats.find(c => c.code === topic);
-    if (!chat) return;
+    let chat = state.chats.find(c => c.code === topic);
+    if (!chat) {
+      // Auto-discover chat if incoming message belongs to a valid topic code
+      chat = { code: topic, title: 'Chat ' + topic, messages: [], unread: 0, own: false };
+      state.chats.push(chat);
+      saveChats();
+      renderChatList();
+    }
     if (ev.id) seenIds.add(ev.id);
 
     const att = ev.attachment || null;
@@ -1704,10 +1738,10 @@
     if (arr.includes(me)){
       arr.splice(arr.indexOf(me), 1);
       if (!arr.length) delete m.reactions[e];
-      sendControl({ t:'r', id:m.eventId, e, off:1 });
+      sendControl(null, { t:'r', id:m.eventId, e, off:1 });
     } else {
       arr.push(me);
-      sendControl({ t:'r', id:m.eventId, e });
+      sendControl(null, { t:'r', id:m.eventId, e });
     }
     saveChats(); rerender();
   }
@@ -1727,13 +1761,13 @@
     const text = v.trim();
     if (!text || text === cur) return;
     m.text = text; m.edited = true; saveChats(); rerender();
-    if (m.eventId) sendControl({ t:'e', id:m.eventId, m:text });
+    if (m.eventId) sendControl(null, { t:'e', id:m.eventId, m:text });
   }
   function confirmDelete(m){
     if (!confirm(m.mine && m.eventId ? 'Delete for everyone?' : 'Delete this message?')) return;
     const chat = activeChat(); if (!chat) return;
     chat.messages = chat.messages.filter(x => x.id !== m.id);
-    if (m.mine && m.eventId) sendControl({ t:'d', id:m.eventId });
+    if (m.mine && m.eventId) sendControl(null, { t:'d', id:m.eventId });
     saveChats(); rerender();
   }
   function openMsgMenu(m){
@@ -1772,7 +1806,7 @@
     if (quote){
       const msg = { id:newId(), text, quote, sender:name, time:Date.now(), mine:true, status:'sending', kind:'text' };
       chat.messages.push(msg); saveChats(); rerender();
-      const id = await sendControl({ t:'m', m:text, q:quote });
+      const id = await sendControl(chat.code, { t:'m', m:text, q:quote });
       msg.eventId = id; msg.status = id ? 'sent' : 'failed';
       saveChats(); rerender();
       return;
@@ -1899,7 +1933,7 @@
     navigator.geolocation.getCurrentPosition(async pos => {
       const { latitude:lat, longitude:lng, accuracy:acc } = pos.coords;
       const chat = activeChat(); if (!chat) return;
-      const id = await sendControl({ t:'l', lat, lng, acc });
+      const id = await sendControl(chat.code, { t:'l', lat, lng, acc });
       chat.messages.push({ id:newId(), eventId:id, kind:'location', lat, lng, acc, sender:state.name, time:Date.now(), mine:true, status: id ? 'sent' : 'failed' });
       saveChats(); rerender();
     }, () => toast('Location permission denied'), { enableHighAccuracy:true, timeout:10000 });
@@ -1976,11 +2010,13 @@
     if (code.length !== 11){ toast('Enter a valid eleven digit number'); return false; }
     let c = state.chats.find(x => x.code === code);
     if (!c){
-      state.chats.push({ code, title: name || (code === ownCode() ? 'My channel' : ('Chat ' + code)), messages:[], unread:0, own: code === ownCode() });
+      c = { code, title: name || (code === ownCode() ? 'My channel' : ('Chat ' + code)), messages:[], unread:0, own: code === ownCode() };
+      state.chats.push(c);
       saveChats();
     } else if (name){ c.title = name; saveChats(); }
     localStorage.setItem('ntfy_joined', '1');
     hideJoin();
+    subscribe(code);
     openChat(code);
     toast('Connected to ' + code);
     return true;
@@ -2099,16 +2135,28 @@
     closeModal('groupModal');
   }
 
-  /* ---------- ntfy Machine Code & Encrypted Audio Voice Call (No WebRTC, 5-min limit) ---------- */
+  /* ---------- Fullscreen Voice Call Screen & ringtone.mp3 ---------- */
   let callRecorder = null;
   let callAudioStream = null;
   let callActive = false;
+  let callConnected = false;
   let callTimerInterval = null;
   let callSeconds = 0;
   let callPasscode = null;
   const MAX_CALL_SECONDS = 300; // 5 mins limit
+  const ringtoneAudio = new Audio('ringtone.mp3');
+  ringtoneAudio.loop = true;
 
-  async function startCall(){
+  function playRingtone(){
+    ringtoneAudio.currentTime = 0;
+    ringtoneAudio.play().catch(() => {});
+  }
+  function stopRingtone(){
+    ringtoneAudio.pause();
+    ringtoneAudio.currentTime = 0;
+  }
+
+  async function initiateCall(){
     const chat = activeChat();
     if (!chat){ toast('Open a conversation first'); return; }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder){
@@ -2127,7 +2175,7 @@
       callRecorder = new MediaRecorder(callAudioStream);
 
       callRecorder.ondataavailable = async (e) => {
-        if (e.data && e.data.size > 0 && callActive) {
+        if (e.data && e.data.size > 0 && callActive && callConnected) {
           const buffer = await e.data.arrayBuffer();
           let dataStr = bufToB64(buffer);
 
@@ -2136,46 +2184,123 @@
             dataStr = enc.salt + '.' + enc.iv + '.' + bufToB64(enc.ct);
           }
 
-          sendControl({ t: 'v_chunk', data: dataStr, pass: !!callPasscode }, true);
+          sendControl(chat.code, { t: 'v_chunk', data: dataStr, pass: !!callPasscode }, true);
         }
       };
 
       callActive = true;
+      callConnected = false;
       callSeconds = 0;
-      callRecorder.start(2500); // Send voice chunk every 2.5s to ntfy topic
 
-      $('callStatus').textContent = 'Call active via ntfy transmission chunks.' + (callPasscode ? ' (Encrypted)' : '');
-      $('callStart').style.display = 'none';
-      $('callEnd').style.display = '';
-      $('callTimer').style.display = 'block';
-      updateCallTimerUI();
+      // Show call screen UI
+      $('callScreen').classList.add('show');
+      $('callPeerName').textContent = chat.title || chat.code;
+      $('callAvatar').textContent = avatarText(chat.title || chat.code);
+      $('callStateText').textContent = 'Calling... Ringing...';
+      $('callAcceptBtn').style.display = 'none';
+      $('callTimerDisplay').style.display = 'none';
 
-      callTimerInterval = setInterval(() => {
-        callSeconds++;
-        updateCallTimerUI();
-        if (callSeconds >= MAX_CALL_SECONDS) {
-          toast('5-minute call limit reached.');
-          stopCall();
-        }
-      }, 1000);
+      playRingtone();
+      // Send call offer / initiation
+      sendControl(chat.code, { t: 'v_chunk', data: '', pass: false }, true);
 
     } catch(err) {
-      stopCall();
+      terminateCall(false);
       toast('Microphone access denied: ' + err.message);
     }
+  }
+
+  async function handleIncomingCallOffer(chat, from){
+    if (callActive) return; // already in a call
+    callActive = true;
+    callConnected = false;
+    callSeconds = 0;
+
+    $('callScreen').classList.add('show');
+    $('callPeerName').textContent = chat.title || chat.code;
+    $('callAvatar').textContent = avatarText(chat.title || chat.code);
+    $('callStateText').textContent = 'Incoming call from ' + from;
+    $('callAcceptBtn').style.display = 'flex';
+    $('callTimerDisplay').style.display = 'none';
+
+    playRingtone();
+  }
+
+  async function acceptCall(){
+    const chat = activeChat();
+    if (!chat) return;
+    try {
+      callAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      callRecorder = new MediaRecorder(callAudioStream);
+      callRecorder.ondataavailable = async (e) => {
+        if (e.data && e.data.size > 0 && callActive && callConnected) {
+          const buffer = await e.data.arrayBuffer();
+          let dataStr = bufToB64(buffer);
+          if (callPasscode && vaultAvailable()){
+            const enc = await vaultEncryptBytes(callPasscode, buffer);
+            dataStr = enc.salt + '.' + enc.iv + '.' + bufToB64(enc.ct);
+          }
+          sendControl(chat.code, { t: 'v_chunk', data: dataStr, pass: !!callPasscode }, true);
+        }
+      };
+
+      stopRingtone();
+      callConnected = true;
+      callRecorder.start(2500);
+
+      $('callAcceptBtn').style.display = 'none';
+      $('callStateText').textContent = 'Connected';
+      $('callTimerDisplay').style.display = 'block';
+      startCallTimer();
+
+      sendControl(chat.code, { t: 'v_accept' }, true);
+    } catch(err){
+      terminateCall(true);
+      toast('Could not accept call: ' + err.message);
+    }
+  }
+
+  function handleCallAccepted(chat, from){
+    if (!callActive) return;
+    stopRingtone();
+    callConnected = true;
+    if (callRecorder && callRecorder.state === 'inactive') {
+      callRecorder.start(2500);
+    }
+    $('callStateText').textContent = 'Connected';
+    $('callTimerDisplay').style.display = 'block';
+    startCallTimer();
+  }
+
+  function startCallTimer(){
+    clearInterval(callTimerInterval);
+    callSeconds = 0;
+    updateCallTimerUI();
+    callTimerInterval = setInterval(() => {
+      callSeconds++;
+      updateCallTimerUI();
+      if (callSeconds >= MAX_CALL_SECONDS) {
+        toast('5-minute call limit reached.');
+        terminateCall(true);
+      }
+    }, 1000);
   }
 
   function updateCallTimerUI(){
     const m = String(Math.floor(callSeconds / 60)).padStart(2, '0');
     const s = String(callSeconds % 60).padStart(2, '0');
-    $('callTimer').textContent = `${m}:${s} / 05:00`;
+    $('callTimerDisplay').textContent = `${m}:${s} / 05:00`;
   }
 
-  function stopCall(sendSignal = true){
-    if (sendSignal && callActive) {
-      sendControl({ t: 'v_end' }, true);
+  function terminateCall(sendSignal = true){
+    const chat = activeChat();
+    if (sendSignal && chat && callActive) {
+      sendControl(chat.code, { t: 'v_end' }, true);
     }
     callActive = false;
+    callConnected = false;
+    stopRingtone();
+
     if (callRecorder && callRecorder.state !== 'inactive'){
       try { callRecorder.stop(); } catch(_){}
     }
@@ -2188,14 +2313,18 @@
     callTimerInterval = null;
     callSeconds = 0;
 
-    $('callStatus').textContent = 'Call ended.';
-    $('callStart').style.display = '';
-    $('callEnd').style.display = 'none';
-    $('callTimer').style.display = 'none';
+    $('callScreen').classList.remove('show');
+    $('remoteAudio').srcObject = null;
   }
 
-  async function receiveVoiceChunk(from, dataStr, isEncrypted){
-    if (from === state.name) return; // ignore own voice loopback
+  async function receiveVoiceChunk(chat, from, dataStr, isEncrypted){
+    if (from === state.name) return;
+    if (!callActive) {
+      handleIncomingCallOffer(chat, from);
+      return;
+    }
+    if (!dataStr) return; // just an offer signal
+
     try {
       let rawBytes;
       if (isEncrypted){
@@ -2216,20 +2345,15 @@
       const audio = new Audio(url);
       audio.play().catch(() => {});
       setTimeout(() => URL.revokeObjectURL(url), 10000);
-
-      if (!callActive) {
-        $('callStatus').textContent = 'Receiving voice audio from ' + from;
-        if (!$('callModal').classList.contains('show')) openModal('callModal');
-      }
     } catch(e){
       toast('Voice chunk decryption failed.');
     }
   }
 
-  function handleCallEndSignal(from){
+  function handleCallEndSignal(chat, from){
     if (from !== state.name && callActive) {
       toast(from + ' ended the call');
-      stopCall(false);
+      terminateCall(false);
     }
   }
 
@@ -2262,15 +2386,10 @@
   $('groupCancel').addEventListener('click', () => closeModal('groupModal'));
   $('groupCreate').addEventListener('click', createGroup);
 
-  // experimental voice calling over ntfy
-  $('callBtn').addEventListener('click', () => {
-    if (!activeChat()){ toast('Open a conversation first'); return; }
-    $('callStatus').textContent = 'Ready to start an experimental voice call over ntfy topic (5 min limit).';
-    openModal('callModal');
-  });
-  $('callClose').addEventListener('click', () => closeModal('callModal'));
-  $('callStart').addEventListener('click', startCall);
-  $('callEnd').addEventListener('click', () => stopCall(true));
+  // full-screen calls with ringtone
+  $('callBtn').addEventListener('click', initiateCall);
+  $('callAcceptBtn').addEventListener('click', acceptCall);
+  $('callEndBtn').addEventListener('click', () => terminateCall(true));
 
   // header
   $('settingsBtn').addEventListener('click', () => openModal('settingsModal'));
@@ -2322,7 +2441,7 @@
   $('regenBtn').addEventListener('click', () => {
     if (!confirm('Generate a new code? Your old channel and its history will be removed.')) return;
     const old = ownCode();
-    if (streams[old]){ streams[old].close(); delete streams[old]; }
+    if (globalStreams[old]){ globalStreams[old].close(); delete globalStreams[old]; }
     const nc = makeCode();
     localStorage.setItem('ntfy_code', nc);
     state.chats = state.chats.filter(c => !c.own);
@@ -2398,7 +2517,7 @@
   $('messageInput').addEventListener('input', () => {
     autoResize();
     const now = Date.now();
-    if (now - lastTypingSent > 2500){ lastTypingSent = now; sendControl({ t:'t' }, true); }
+    if (now - lastTypingSent > 2500){ lastTypingSent = now; sendControl(null, { t:'t' }, true); }
   });
   $('messageInput').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey && window.matchMedia('(min-width:601px)').matches){ e.preventDefault(); sendMessage(); }
@@ -2414,7 +2533,7 @@
   $('lightboxDownload').addEventListener('click', downloadLightbox);
 
   // modal backdrop close
-  ['settingsModal','newChatModal','passModal','qrModal','msgMenuModal','emojiModal','peopleModal','groupModal','callModal'].forEach(id => {
+  ['settingsModal','newChatModal','passModal','qrModal','msgMenuModal','emojiModal','peopleModal','groupModal'].forEach(id => {
     $(id).addEventListener('click', e => { if (e.target === $(id)) { if (id === 'passModal') resolvePass(null); else closeModal(id); } });
   });
   document.addEventListener('click', () => document.querySelectorAll('.dropdown.show').forEach(d => d.classList.remove('show')));
