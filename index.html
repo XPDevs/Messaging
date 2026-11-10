@@ -603,7 +603,8 @@
   .people-contact strong{display:block;font-size:14px}
   .people-contact small{display:block;color:#888;font-size:12px}
   .people-contact button{border:1px solid var(--border);background:var(--input-bg);color:var(--text);padding:7px 10px;border-radius:9px}
-  .call-status{padding:12px;border-radius:12px;background:var(--input-bg)}
+  .call-status{padding:12px;border-radius:12px;background:var(--input-bg);font-size:14px;margin-bottom:12px}
+  .call-timer{font-size:18px;font-weight:bold;color:var(--primary);margin-top:8px}
   body:not(.show-ui-emoji) #msgReactRow{display:none}
   #remoteAudio{width:100%;margin-top:12px}
   .sidebar-footer{gap:8px}
@@ -704,7 +705,7 @@
           <span class="dot" id="dot"></span>
           <span id="statusText">Connecting…</span>
         </span>
-        <button class="icon-btn" id="callBtn" title="Experimental audio call" aria-label="Start audio call">
+        <button class="icon-btn" id="callBtn" title="Audio Call (ntfy stream)" aria-label="Start audio call">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.2 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72l.45 2.7a2 2 0 0 1-.57 1.73L7.2 9.94a16 16 0 0 0 6 6l1.79-1.79a2 2 0 0 1 1.73-.57l2.7.45a2 2 0 0 1 1.58 1.89z"/></svg>
         </button>
         <button class="icon-btn" id="qrBtn" title="Share / scan code" aria-label="Share or scan code">
@@ -817,14 +818,15 @@
 
 <div class="modal" id="callModal">
   <div class="modal-content">
-    <h3>Experimental calling</h3>
-    <p>Audio calling is an experimental browser feature. It requires microphone access and a secure connection. The prototype uses public ntfy topics for signalling, so do not use it for private or sensitive calls.</p>
-    <div id="callStatus" class="status">Calling is not active.</div>
-    <audio id="remoteAudio" autoplay playsinline></audio>
+    <h3>Experimental ntfy Voice Call</h3>
+    <p>Audio is converted to machine code, encrypted, and sent over the public ntfy topic. Limited to 5 minutes maximum.</p>
+    <div id="callStatus" class="call-status">Call is not active.</div>
+    <div id="callTimer" class="call-timer" style="display:none">00:00 / 05:00</div>
+    <audio id="remoteAudio" autoplay playsinline style="display:none"></audio>
     <div class="modal-actions">
       <button class="cancel" id="callClose">Close</button>
-      <button class="confirm" id="callStart">Start call</button>
-      <button class="settings-btn danger" id="callEnd" style="width:auto;display:none">End call</button>
+      <button class="confirm" id="callStart">Start Call</button>
+      <button class="settings-btn danger" id="callEnd" style="width:auto;display:none">End Call</button>
     </div>
   </div>
 </div>
@@ -995,7 +997,6 @@
   function saveChats(){
     try { localStorage.setItem('ntfy_chats', JSON.stringify(state.chats)); }
     catch(_){
-      // storage full: drop cached copies (originals stay on ntfy)
       state.chats.forEach(c => c.messages.forEach(m => { if (m.cached) delete m.dataUrl; }));
       try { localStorage.setItem('ntfy_chats', JSON.stringify(state.chats)); } catch(__){}
     }
@@ -1603,6 +1604,14 @@
         const msg = { id:newId(), eventId:base.eventId, mine:false, status:'received', time:base.time, sender:from, kind:'location', lat:c.lat, lng:c.lng, acc:c.acc };
         deliver(chat, msg); notifyMsg(msg); return;
       }
+      case 'v_chunk': {
+        if (typeof receiveVoiceChunk === 'function') receiveVoiceChunk(from, c.data, c.pass);
+        return;
+      }
+      case 'v_end': {
+        if (typeof handleCallEndSignal === 'function') handleCallEndSignal(from);
+        return;
+      }
     }
     if (changed){ saveChats(); renderChatList(); if (state.activeCode === chat.code) renderMessages(); }
   }
@@ -2036,7 +2045,6 @@
     autoResize();
   }
 
-
   /* ---------- contacts and group conversations ---------- */
   function saveContacts(){
     localStorage.setItem('ntfy_contacts', JSON.stringify(state.contacts));
@@ -2091,105 +2099,138 @@
     closeModal('groupModal');
   }
 
-  /* ---------- experimental WebRTC audio calling ---------- */
-  let callPeer = null, callLocalStream = null, callSignalStream = null, callPendingOffer = null;
-  let callSignalBusy = false;
-  function callTopic(code){ return 'xpdevs-call-' + code; }
-  async function sendCallSignal(code, payload){
-    const response = await fetch('https://ntfy.sh/' + encodeURIComponent(callTopic(code)), {
-      method:'POST', body:'XPDCALL1|' + b64EncodeUtf8(JSON.stringify(payload)),
-      headers:{'Title':ownCode(),'Cache':'no','Priority':'high'}
-    });
-    if (!response.ok) throw new Error('Signalling failed: HTTP ' + response.status);
-  }
-  function closeCallSignal(){
-    if (callSignalStream){ callSignalStream.close(); callSignalStream = null; }
-  }
-  function stopCall(){
-    if (callPeer){ try { callPeer.close(); } catch(_){} callPeer = null; }
-    if (callLocalStream){ callLocalStream.getTracks().forEach(track => track.stop()); callLocalStream = null; }
-    closeCallSignal();
-    $('remoteAudio').srcObject = null;
-    $('callStatus').textContent = 'Call ended.';
-    $('callStart').style.display = '';
-    $('callEnd').style.display = 'none';
-  }
-  async function acceptCallOffer(code, offer){
-    if (!confirm('Incoming experimental audio call. Accept?')) return;
-    try {
-      callLocalStream = await navigator.mediaDevices.getUserMedia({audio:true,video:false});
-      callPeer = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
-      callLocalStream.getTracks().forEach(track => callPeer.addTrack(track,callLocalStream));
-      callPeer.ontrack = event => { $('remoteAudio').srcObject = event.streams[0]; };
-      await callPeer.setRemoteDescription(offer);
-      const answer = await callPeer.createAnswer();
-      await callPeer.setLocalDescription(answer);
-      await new Promise(resolve => {
-        if (callPeer.iceGatheringState === 'complete') return resolve();
-        const timeout = setTimeout(resolve, 5000);
-        callPeer.onicegatheringstatechange = () => {
-          if (callPeer && callPeer.iceGatheringState === 'complete'){ clearTimeout(timeout); resolve(); }
-        };
-      });
-      await sendCallSignal(code,{type:'answer',sdp:callPeer.localDescription,from:ownCode()});
-      $('callStatus').textContent = 'Connected or waiting for the other device.';
-      $('callStart').style.display = 'none'; $('callEnd').style.display = '';
-    } catch(error){ stopCall(); toast('Could not answer call: ' + error.message); }
-  }
+  /* ---------- ntfy Machine Code & Encrypted Audio Voice Call (No WebRTC, 5-min limit) ---------- */
+  let callRecorder = null;
+  let callAudioStream = null;
+  let callActive = false;
+  let callTimerInterval = null;
+  let callSeconds = 0;
+  let callPasscode = null;
+  const MAX_CALL_SECONDS = 300; // 5 mins limit
+
   async function startCall(){
     const chat = activeChat();
     if (!chat){ toast('Open a conversation first'); return; }
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.RTCPeerConnection){
-      toast('This browser does not support WebRTC audio calling'); return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder){
+      toast('Voice calls are not supported on this browser'); return;
     }
+
+    if (lockArmed && vaultAvailable()){
+      callPasscode = await askPasscode({ title:'Encrypted Call', desc:'Enter a passcode to encrypt your voice chunks over ntfy.', ok:'Start Call' });
+      if (callPasscode === null) return;
+    } else {
+      callPasscode = null;
+    }
+
     try {
-      $('callStatus').textContent = 'Requesting microphone access.';
-      callLocalStream = await navigator.mediaDevices.getUserMedia({audio:true,video:false});
-      callPeer = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
-      callLocalStream.getTracks().forEach(track => callPeer.addTrack(track,callLocalStream));
-      callPeer.ontrack = event => { $('remoteAudio').srcObject = event.streams[0]; };
-      callPeer.onconnectionstatechange = () => {
-        if (callPeer) $('callStatus').textContent = 'Call status: ' + callPeer.connectionState;
+      callAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      callRecorder = new MediaRecorder(callAudioStream);
+
+      callRecorder.ondataavailable = async (e) => {
+        if (e.data && e.data.size > 0 && callActive) {
+          const buffer = await e.data.arrayBuffer();
+          let dataStr = bufToB64(buffer);
+
+          if (callPasscode && vaultAvailable()){
+            const enc = await vaultEncryptBytes(callPasscode, buffer);
+            dataStr = enc.salt + '.' + enc.iv + '.' + bufToB64(enc.ct);
+          }
+
+          sendControl({ t: 'v_chunk', data: dataStr, pass: !!callPasscode }, true);
+        }
       };
-      const offer = await callPeer.createOffer();
-      await callPeer.setLocalDescription(offer);
-      await new Promise(resolve => {
-        if (callPeer.iceGatheringState === 'complete') return resolve();
-        const timeout = setTimeout(resolve, 6000);
-        callPeer.onicegatheringstatechange = () => {
-          if (callPeer && callPeer.iceGatheringState === 'complete'){ clearTimeout(timeout); resolve(); }
-        };
-      });
-      await sendCallSignal(chat.code,{type:'offer',sdp:callPeer.localDescription,from:ownCode(),name:state.name});
-      $('callStatus').textContent = 'Call invitation sent. Keep this window open while the other person joins.';
-      $('callStart').style.display = 'none'; $('callEnd').style.display = '';
-    } catch(error){ stopCall(); toast('Could not start call: ' + error.message); }
+
+      callActive = true;
+      callSeconds = 0;
+      callRecorder.start(2500); // Send voice chunk every 2.5s to ntfy topic
+
+      $('callStatus').textContent = 'Call active via ntfy transmission chunks.' + (callPasscode ? ' (Encrypted)' : '');
+      $('callStart').style.display = 'none';
+      $('callEnd').style.display = '';
+      $('callTimer').style.display = 'block';
+      updateCallTimerUI();
+
+      callTimerInterval = setInterval(() => {
+        callSeconds++;
+        updateCallTimerUI();
+        if (callSeconds >= MAX_CALL_SECONDS) {
+          toast('5-minute call limit reached.');
+          stopCall();
+        }
+      }, 1000);
+
+    } catch(err) {
+      stopCall();
+      toast('Microphone access denied: ' + err.message);
+    }
   }
-  function listenForCalls(){
-    const chat = activeChat();
-    if (!chat) return;
-    closeCallSignal();
-    callSignalStream = new EventSource('https://ntfy.sh/' + encodeURIComponent(callTopic(chat.code)) + '/sse');
-    callSignalStream.onmessage = async event => {
-      let data;
-      try {
-        const parsed = JSON.parse(event.data);
-        const raw = parsed.message || '';
-        if (!raw.startsWith('XPDCALL1|')) return;
-        data = JSON.parse(b64DecodeUtf8(raw.slice(9)));
-      } catch(_) { return; }
-      if (!data || data.from === ownCode()) return;
-      if (data.type === 'offer' && !callPeer){
-        callPendingOffer = data;
-        $('callStatus').textContent = 'Incoming call from ' + (data.name || data.from) + '. Select accept in the browser prompt.';
-        if (!$('callModal').classList.contains('show')) openModal('callModal');
-        await acceptCallOffer(chat.code,data.sdp);
-      } else if (data.type === 'answer' && callPeer && callPeer.signalingState === 'have-local-offer'){
-        try { await callPeer.setRemoteDescription(data.sdp); } catch(error){ toast('Call answer failed: ' + error.message); }
-      } else if (data.type === 'hangup' && callPeer){
-        stopCall();
+
+  function updateCallTimerUI(){
+    const m = String(Math.floor(callSeconds / 60)).padStart(2, '0');
+    const s = String(callSeconds % 60).padStart(2, '0');
+    $('callTimer').textContent = `${m}:${s} / 05:00`;
+  }
+
+  function stopCall(sendSignal = true){
+    if (sendSignal && callActive) {
+      sendControl({ t: 'v_end' }, true);
+    }
+    callActive = false;
+    if (callRecorder && callRecorder.state !== 'inactive'){
+      try { callRecorder.stop(); } catch(_){}
+    }
+    callRecorder = null;
+    if (callAudioStream){
+      callAudioStream.getTracks().forEach(t => t.stop());
+      callAudioStream = null;
+    }
+    clearInterval(callTimerInterval);
+    callTimerInterval = null;
+    callSeconds = 0;
+
+    $('callStatus').textContent = 'Call ended.';
+    $('callStart').style.display = '';
+    $('callEnd').style.display = 'none';
+    $('callTimer').style.display = 'none';
+  }
+
+  async function receiveVoiceChunk(from, dataStr, isEncrypted){
+    if (from === state.name) return; // ignore own voice loopback
+    try {
+      let rawBytes;
+      if (isEncrypted){
+        if (!callPasscode && vaultAvailable()){
+          callPasscode = await askPasscode({ title:'Incoming Encrypted Voice', desc:'Enter the passcode to hear this call.', ok:'Unlock Audio' });
+        }
+        if (!callPasscode) return;
+        const parts = dataStr.split('.');
+        const ctBuf = b64ToBytes(parts[2]).buffer;
+        const ptBuf = await vaultDecryptBytes(callPasscode, parts[0], parts[1], ctBuf);
+        rawBytes = new Uint8Array(ptBuf);
+      } else {
+        rawBytes = b64ToBytes(dataStr);
       }
-    };
+
+      const blob = new Blob([rawBytes], { type: 'audio/webm' });
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.play().catch(() => {});
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+
+      if (!callActive) {
+        $('callStatus').textContent = 'Receiving voice audio from ' + from;
+        if (!$('callModal').classList.contains('show')) openModal('callModal');
+      }
+    } catch(e){
+      toast('Voice chunk decryption failed.');
+    }
+  }
+
+  function handleCallEndSignal(from){
+    if (from !== state.name && callActive) {
+      toast(from + ' ended the call');
+      stopCall(false);
+    }
   }
 
   /* ================= WIRING ================= */
@@ -2221,19 +2262,15 @@
   $('groupCancel').addEventListener('click', () => closeModal('groupModal'));
   $('groupCreate').addEventListener('click', createGroup);
 
-  // experimental calls
+  // experimental voice calling over ntfy
   $('callBtn').addEventListener('click', () => {
     if (!activeChat()){ toast('Open a conversation first'); return; }
-    $('callStatus').textContent = 'Ready to start an experimental audio call.';
-    openModal('callModal'); listenForCalls();
+    $('callStatus').textContent = 'Ready to start an experimental voice call over ntfy topic (5 min limit).';
+    openModal('callModal');
   });
   $('callClose').addEventListener('click', () => closeModal('callModal'));
   $('callStart').addEventListener('click', startCall);
-  $('callEnd').addEventListener('click', async () => {
-    const c = activeChat();
-    if (c){ try { await sendCallSignal(c.code,{type:'hangup',from:ownCode()}); } catch(_){} }
-    stopCall();
-  });
+  $('callEnd').addEventListener('click', () => stopCall(true));
 
   // header
   $('settingsBtn').addEventListener('click', () => openModal('settingsModal'));
@@ -2446,8 +2483,6 @@
 </script>
 <script>
 (() => {
-  // Service workers require HTTPS or localhost. Opening this file directly
-  // with file:// is supported for local testing, but cannot register a worker.
   if (!('serviceWorker' in navigator)) return;
   const supportedOrigin = location.protocol === 'https:' ||
     (location.protocol === 'http:' &&
