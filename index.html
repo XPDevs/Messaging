@@ -671,7 +671,7 @@
 
   /* ===== Call data visibility ===== */
   .call-screen{overflow-y:auto}
-  .call-data-strip,.call-data-details{display:none !important}
+  .call-data-strip,.call-data-details{display:none}
   .call-data-strip{
     display:flex;align-items:center;justify-content:center;gap:7px;flex-wrap:wrap;
     font-size:11.5px;line-height:1.4;color:var(--text);
@@ -684,7 +684,6 @@
     box-shadow:0 0 0 3px rgba(40,166,69,.16);flex-shrink:0}
   .call-data-strip .cds-dot.idle{background:#9aa0a6;box-shadow:none}
   .call-data-strip .cds-dot.err{background:#ff4d4d;box-shadow:0 0 0 3px rgba(255,77,77,.16)}
-  .call-data-toggle{display:none !important}
   .call-data-details{
     display:none;width:min(370px,92vw);text-align:left;
     background:rgba(127,127,127,.10);border:1px solid rgba(127,127,127,.22);
@@ -769,7 +768,6 @@
   .people-contact small{display:block;color:#888;font-size:12px}
   .people-contact button{border:1px solid var(--border);background:var(--input-bg);color:var(--text);padding:7px 10px;border-radius:9px}
   body:not(.show-ui-emoji) #msgReactRow{display:none}
-  #remoteAudio{display:none}
   .sidebar-footer{gap:8px}
   .sidebar-footer .new-item-btn{font-size:12px;padding:9px 12px}
   @media(max-width:900px){.sidebar-footer .new-item-btn{flex:1}}
@@ -816,6 +814,21 @@
   .mic-note{font-size:12px;line-height:1.5;color:#70757a;margin:6px 0 0}
   .mic-note.ok{color:#28a645}
   .mic-note.err{color:#ff4d4d}
+
+  /* ===== Big-file chunking, silent calls and call telemetry (added) ===== */
+  .field-note{font-size:11.5px;line-height:1.5;color:#8a8f94;margin:0}
+  .up-bar{height:4px;border-radius:4px;background:rgba(127,127,127,.22);overflow:hidden;margin-top:6px}
+  .up-bar i{display:block;height:100%;background:var(--primary);transition:width .18s ease}
+  .recv-card{display:flex;align-items:center;gap:12px;min-width:220px;max-width:100%}
+  .recv-card .file-icon{background:linear-gradient(135deg,#1a73e8,#0b47a1);font-size:17px}
+  .recv-card .file-meta{flex:1;min-width:0}
+  .call-state-note{font-size:11px;color:#8a8f94;min-height:14px;letter-spacing:.02em}
+  .call-screen.exp-call-ui .call-state-note{color:rgba(255,255,255,.55)}
+  .call-data-toggle{
+    display:inline-flex;align-items:center;border:none;cursor:pointer;
+    background:rgba(127,127,127,.16);color:inherit;font-size:10.5px;font-weight:700;
+    border-radius:999px;padding:3px 9px;margin-left:2px;
+  }
 </style>
 </head>
 <body class="dark">
@@ -858,7 +871,8 @@
     </div>
     <div class="call-name" id="callPeerName">Calling...</div>
     <div class="call-state-text" id="callStateText">Ringing...</div>
-    <div class="call-timer-display" id="callTimerDisplay" style="display:none">00:00 / 05:00</div>
+    <div class="call-state-note" id="callStateNote"></div>
+    <div class="call-timer-display" id="callTimerDisplay" style="display:none">30:00 left</div>
     <div class="call-data-strip" id="callDataStrip">
       <span class="cds-dot idle" id="callDataDot"></span>
       <span><b id="callSentStat">0 B</b> sent</span>
@@ -876,7 +890,6 @@
       <div class="call-data-log" id="callDataLog"></div>
     </div>
   </div>
-  <audio id="remoteAudio" autoplay playsinline></audio>
 
   <!-- Experimental Call Controls Pad -->
   <div class="exp-grid-actions" id="expGridActions" style="display:none">
@@ -1174,6 +1187,13 @@
       <div class="field field-row"><label>Sound &amp; vibration</label>
         <label class="toggle"><input type="checkbox" id="soundToggle"><span class="slider"></span></label>
       </div>
+      <div class="field field-row" style="align-items:flex-start;gap:14px">
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+          <label style="text-transform:none;font-size:14px;font-weight:600;color:var(--text);letter-spacing:0">Call ringtone</label>
+          <span class="field-note">Turn this off to make and take calls with no ring sound and no vibration. The call screen still appears with the accept button, so you can answer silently.</span>
+        </div>
+        <label class="toggle"><input type="checkbox" id="ringToggle"><span class="slider"></span></label>
+      </div>
       <div class="field"><label>Notifications</label><button class="settings-btn" id="notifBtn">Enable browser notifications</button><p>Browser notifications work while this page is running.</p></div>
 
       <div class="field">
@@ -1206,6 +1226,8 @@
     <p>Your eleven digit number identifies your ntfy topic. Share it only with people you trust.</p>
     <p><b>Rich messages</b>, photos, voice notes, files and location. Everything is delivered through ntfy.</p>
     <p><b>Vault Lock</b>, encrypt text or a photo on your device with a passcode.</p>
+    <p><b>Voice calls</b> run entirely over ntfy: the audio is compressed to 8 kHz µ-law, packed into normal ntfy messages and rebuilt on the other side. No WebRTC, no STUN/TURN, no media server. Settings has a <b>Call ringtone</b> switch to call silently.</p>
+    <p><b>Big files</b> are split into chunks automatically, so an upload that would trip ntfy's size limit (HTTP 413) carries on in pieces and is stitched back together on the other side.</p>
     <button class="help-overlay-close" id="helpClose">Got it</button>
   </div>
 </div>
@@ -1245,7 +1267,8 @@
     sound: localStorage.getItem('ntfy_sound') !== '0',
     contacts: (() => { try { const v = JSON.parse(localStorage.getItem('ntfy_contacts') || '[]'); return Array.isArray(v) ? v : []; } catch (_) { return []; } })(),
     showUiEmoji: localStorage.getItem('ntfy_ui_emoji') === '1',
-    experimental: localStorage.getItem('ntfy_experimental') === '1'
+    experimental: localStorage.getItem('ntfy_experimental') === '1',
+    ring: localStorage.getItem('ntfy_ring') !== '0'
   };
   const seenIds = new Set();
   const streams = {};
@@ -1613,6 +1636,24 @@
   }
 
   function buildBubble(m){
+    /* a file that is still being cut into chunks (or is being rebuilt) */
+    if (m.upload && m.upload.total > 1 && m.upload.sent < m.upload.total){
+      const pct = Math.max(3, Math.round(m.upload.sent / m.upload.total * 100));
+      const card = el('div', 'recv-card');
+      card.appendChild(el('div', 'file-icon', m.mine ? '📤' : '📥'));
+      const meta = el('div', 'file-meta');
+      meta.appendChild(el('div', 'file-name', m.fileName || 'File'));
+      meta.appendChild(el('div', 'file-sub',
+        (m.mine ? 'Sending part ' : 'Receiving part ') + m.upload.sent + ' of ' + m.upload.total +
+        (m.size ? ' · ' + humanSize(m.size) : '') + ' · ' + pct + '%'));
+      const bar = el('div', 'up-bar');
+      const inner = document.createElement('i');
+      inner.style.width = pct + '%';
+      bar.appendChild(inner);
+      meta.appendChild(bar);
+      card.appendChild(meta);
+      return card;
+    }
     if (m.locked && !m.text && !m.dataUrl) return vaultCard(m);
 
     const bubble = el('div', 'bubble' + (m.kind === 'image' ? ' image-bubble' : ''));
@@ -1940,7 +1981,13 @@
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), opts.timeout || 12000);
     try {
-      const res = await fetch(ntfyUrl(topic) + qs, { method:'POST', body, signal: ctl.signal });
+      let res = await fetch(ntfyUrl(topic) + qs, { method:'POST', body, signal: ctl.signal });
+      if (res.status === 429 || res.status === 503){
+        /* ntfy rate limit: wait once and retry instead of losing the message */
+        const ra = Number(res.headers && res.headers.get && res.headers.get('Retry-After')) || 1;
+        await new Promise(r => setTimeout(r, Math.min(3000, Math.max(350, ra * 1000))));
+        res = await fetch(ntfyUrl(topic) + qs, { method:'POST', body, signal: ctl.signal });
+      }
       if (!res.ok){
         const extra = await res.text().catch(() => '');
         return { id:null, error:'HTTP ' + res.status + (extra ? ': ' + extra.slice(0, 80) : ''), status:res.status };
@@ -2142,20 +2189,17 @@
         const msg = Object.assign({}, base, { sender: from, kind:'location', lat: c.lat, lng: c.lng, acc: c.acc });
         deliver(chat, msg); notifyMsg(msg); return;
       }
-      case 'v_offer': { if (typeof handleIncomingCallOffer === 'function') handleIncomingCallOffer(chat, from, c); return; }
-      case 'a_offer': { if (typeof handleCallOfferSignal === 'function') handleCallOfferSignal(chat, from, c); return; }
-      case 'a_accept': { if (typeof ntOnAccept === 'function') ntOnAccept(chat, c); return; }
-      case 'a_frame': { if (typeof ntOnFrame === 'function') ntOnFrame(chat, from, c); return; }
-      case 'a_end': { if (typeof ntOnEnd === 'function') ntOnEnd(chat, c); return; }
-      case 'a_reject': { if (typeof ntOnReject === 'function') ntOnReject(chat, c); return; }
-      case 'a_busy': { if (typeof ntOnBusy === 'function') ntOnBusy(chat, c); return; }
-      case 'w_offer': { if (typeof handleCallOfferSignal === 'function') handleCallOfferSignal(chat, from, c); return; }
-      case 'w_answer': { if (typeof handleCallAnswerSignal === 'function') handleCallAnswerSignal(chat, from, c); return; }
-      case 'w_ice': { if (typeof handleCallIceSignal === 'function') handleCallIceSignal(chat, from, c); return; }
-      case 'v_audio': { if (typeof receiveCallAudio === 'function') receiveCallAudio(chat, from, c); return; }
-      case 'v_chunk': { if (typeof receiveVoiceChunk === 'function') receiveVoiceChunk(chat, from, c.data, c.pass); return; }
-      case 'v_accept': { if (typeof handleCallAccepted === 'function') handleCallAccepted(chat, from); return; }
-      case 'v_reject': { if (typeof handleCallRejected === 'function') handleCallRejected(chat, from); return; }
+      /* ---- voice calls: every signal below is an ordinary ntfy message ---- */
+      case 'v_offer': { handleIncomingCallOffer(chat, from, c); return; }
+      case 'v_accept': { handleCallAccepted(chat, from); return; }
+      case 'v_reject': { handleCallRejected(chat, from, c); return; }
+      case 'v_end': { handleCallEndSignal(chat, from); return; }
+      case 'v_busy': { handleCallRejected(chat, from, { busy:1 }); return; }
+      case 'v_audio': { receiveCallAudio(chat, from, c); return; }
+      case 'v_mute': { handleCallMute(chat, from, c); return; }
+      case 'v_keep': { if (callActive && callConnected) callRxLastPacketAt = Date.now(); return; }
+      /* ---- chunked pieces of a long text message ---- */
+      case 'tp': { receiveTextPart(chat, from, c, base); return; }
       case 'v_end': { if (typeof handleCallEndSignal === 'function') handleCallEndSignal(chat, from); return; }
     }
     if (changed){ saveChats(); renderChatList(); if (state.activeCode === chat.code) renderMessages(); }
@@ -2179,6 +2223,11 @@
     const base = { id:newId(), eventId:ev.id, mine:false, status:'received', time: ev.time ? ev.time * 1000 : Date.now(), urgent: !!(ev.priority && ev.priority >= 4) };
 
     if (att){
+      const metaChunk = parseAttMeta(ev.message || '');
+      if (metaChunk && metaChunk.fid && Number(metaChunk.tp) > 1){
+        collectAttachmentPart(chat, base, metaChunk, att);
+        return;
+      }
       const meta = parseAttMeta(ev.message || '');
       let msg;
       if (meta && meta.l){
@@ -2335,20 +2384,160 @@
     await postText(chat, name + ': ' + text, msg, baseHeaders());
   }
 
+  /* ============== CHUNKED SENDING + RECEIVING (kills HTTP 413) ==============
+     ntfy answers 413 when one request is bigger than it accepts. Instead of
+     failing, a long message or a big file is now cut into parts, each part is
+     posted as its own ntfy message, and the other side glues the parts back
+     together in order. If ntfy still says 413 the part size is halved and the
+     upload restarts; the size that worked is remembered for next time.
+
+       • text  -> control messages { t:'tp', tid, i, n, m }  (~1.6 kB each)
+       • files -> PUT attachments carrying { fid, p, tp } in the Message header
+     Nothing leaves ntfy.sh: no third-party upload host, no other transport.
+     ======================================================================= */
+  const TEXT_PART_CHARS  = 1600;
+  const CHUNK_START_BYTES = 512 * 1024;   // first guess for a big file
+  const CHUNK_MIN_BYTES   = 48 * 1024;    // never go below this
+  const CHUNK_MAX_FILE    = 25 * 1024 * 1024;
+  const PARTS = new Map();        // fid -> file being rebuilt from chunks
+  const TEXT_PARTS = new Map();   // tid -> long text being rebuilt
+
+  function textBytes(s){ return new TextEncoder().encode(String(s == null ? '' : s)).length; }
+
+  /* Split a string without ever cutting an emoji (surrogate pair) in half. */
+  function splitByCodePoints(s, size){
+    const out = [];
+    let i = 0;
+    while (i < s.length){
+      let end = Math.min(s.length, i + size);
+      if (end < s.length){
+        const code = s.charCodeAt(end - 1);
+        if (code >= 0xD800 && code <= 0xDBFF) end--;
+      }
+      out.push(s.slice(i, end));
+      i = end;
+    }
+    return out.length ? out : [''];
+  }
+
+  function learnedChunkSize(){
+    const v = Number(localStorage.getItem('ntfy_chunk_bytes')) || 0;
+    return (v >= CHUNK_MIN_BYTES && v <= 4 * 1024 * 1024) ? v : 0;
+  }
+  function rememberChunkSize(n){
+    if (!n || n < CHUNK_MIN_BYTES) return;
+    try { localStorage.setItem('ntfy_chunk_bytes', String(Math.round(n))); } catch(_){}
+  }
+
   async function postText(chat, body, msg, headers){
     if (LOCAL_ONLY){ msg.status = 'failed'; toast('Local file mode. Run a local server to send.'); saveChats(); rerender(); return; }
-    try {
-      const res = await fetchWithTimeout(ntfyUrl(chat.code), { method:'POST', body, headers }, 20000);
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const j = await res.json().catch(() => null);
-      if (j && j.id){ msg.eventId = j.id; seenIds.add(j.id); }
-      msg.status = 'sent';
-    } catch(err){ msg.status = 'failed'; toast('Send failed: ' + err.message); }
+    if (textBytes(body) <= 3400){
+      try {
+        const res = await fetchWithTimeout(ntfyUrl(chat.code), { method:'POST', body, headers }, 20000);
+        if (res.status !== 413){
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          const j = await res.json().catch(() => null);
+          if (j && j.id){ msg.eventId = j.id; seenIds.add(j.id); }
+          msg.status = 'sent';
+          saveChats(); rerender();
+          return;
+        }
+      } catch(err){
+        msg.status = 'failed';
+        toast('Send failed: ' + ((err && err.message) || 'network error'));
+        saveChats(); rerender();
+        return;
+      }
+    }
+    await postTextChunked(chat, body, msg);
+  }
+
+  async function postTextChunked(chat, body, msg){
+    const cut = body.indexOf(': ');
+    const hasName = cut > 0 && cut <= 40;
+    const payload = hasName ? body.slice(cut + 2) : body;
+    const parts = splitByCodePoints(payload, TEXT_PART_CHARS);
+    const tid = 'x' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    msg.upload = { sent: 0, total: parts.length };
+    saveChats();
+    if (state.activeCode === chat.code) renderMessages();
+    for (let i = 0; i < parts.length; i++){
+      const r = await sendControlEx(chat.code, { t:'tp', tid, i, n: parts.length, m: parts[i] }, { raw:true, timeout:20000 });
+      if (!r.id){
+        msg.status = 'failed';
+        delete msg.upload;
+        toast('Send failed while splitting the message: ' + (r.error || 'network error'));
+        saveChats(); rerender();
+        return;
+      }
+      if (i === 0){ msg.eventId = r.id; seenIds.add(r.id); }
+      msg.upload.sent = i + 1;
+      saveChats();
+      if (state.activeCode === chat.code) renderMessages();
+    }
+    msg.status = 'sent';
+    delete msg.upload;
     saveChats(); rerender();
   }
 
+  /* ---- receiving a long text that was split ---- */
+  function receiveTextPart(chat, from, c, base){
+    if (!c || !c.tid) return;
+    const total = Math.max(1, Number(c.n) || 1);
+    let entry = TEXT_PARTS.get(c.tid);
+    if (!entry){ entry = { total, got: new Array(total).fill(null), filled: 0, at: Date.now() }; TEXT_PARTS.set(c.tid, entry); }
+    const i = Math.max(0, Math.min(total - 1, Number(c.i) || 0));
+    if (entry.got[i] == null){ entry.got[i] = c.m || ''; entry.filled++; }
+    if (entry.filled >= entry.total){
+      TEXT_PARTS.delete(c.tid);
+      const text = entry.got.map(x => x == null ? '' : x).join('');
+      if (text.indexOf(VAULT_PREFIX) === 0){
+        const rest = text.slice(VAULT_PREFIX.length).split('|');
+        if (rest[0] === 't'){
+          deliver(chat, Object.assign({}, base, { sender: from, locked:true, kind:'text', cipher: rest.slice(1).join('|') }));
+          notifyMsg({ sender: from, locked: true });
+          return;
+        }
+      }
+      if (!text) return;
+      const msg = Object.assign({}, base, { sender: from, text, kind:'text' });
+      deliver(chat, msg);
+      notifyMsg(msg);
+      return;
+    }
+    // drop abandoned half-received texts after ten minutes
+    const now = Date.now();
+    TEXT_PARTS.forEach((v, k) => { if (now - v.at > 600000) TEXT_PARTS.delete(k); });
+  }
+
+  /* ---- uploading a file in parts ---- */
+  async function uploadAttachmentPart(chat, blob, meta, partIndex, partTotal, fileName){
+    const h = baseHeaders();
+    h['Filename'] = fileName;
+    h['Message'] = attMeta(Object.assign({}, meta, { p: partIndex, tp: partTotal }));
+    let res;
+    try {
+      res = await fetchWithTimeout(ntfyUrl(chat.code), { method:'PUT', body: blob, headers: h }, 90000);
+    } catch(err){
+      return { error: (err && err.name === 'AbortError') ? 'request timed out' : ((err && err.message) || 'network error') };
+    }
+    if (res.status === 413) return { error:'413', tooLarge:true };
+    if (!res.ok){
+      const extra = await res.text().catch(() => '');
+      return { error:'HTTP ' + res.status + (extra ? ': ' + extra.slice(0, 60) : '') };
+    }
+    const j = await res.json().catch(() => null);
+    return {
+      id: j && j.id ? j.id : null,
+      url: j && j.attachment ? j.attachment.url : null,
+      error: (j && j.id) ? null : 'ntfy did not return a message id'
+    };
+  }
+
   async function sendAttachment(opts){
-    const chat = activeChat(); if (!chat) return;
+    const chat = activeChat(); if (!chat || !opts || !opts.blob) return;
+    if (opts.blob.size > CHUNK_MAX_FILE){ toast('File too large (max 25 MB)'); return; }
+
     const name = state.name;
     const quote = replyTarget ? { id: replyTarget.eventId, s: replyTarget.sender, x: snippet(replyTarget) } : null;
     const msg = { id:newId(), text: opts.caption || '', sender:name, time:Date.now(), mine:true, status:'sending',
@@ -2357,35 +2546,147 @@
     if (opts.kind === 'image' && opts.localDataUrl) msg.dataUrl = opts.localDataUrl;
     chat.messages.push(msg); saveChats(); cancelReply(); rerender();
 
+    const meta = { n:name, k:opts.kind, fn:opts.fileName, c:opts.caption || '', sz:opts.blob.size,
+      m: opts.mime || opts.blob.type || 'application/octet-stream' };
+    if (opts.duration) meta.du = Math.round(opts.duration / 1000);
+    if (quote) meta.q = quote;
+
+    let blob = opts.blob;
+    let fileName = opts.fileName;
+
     try {
-      const meta = { n:name, k:opts.kind, fn:opts.fileName, c:opts.caption || '' };
-      if (opts.duration) meta.du = Math.round(opts.duration / 1000);
-      if (quote) meta.q = quote;
-      let res;
       if (lockArmed && vaultAvailable()){
         const pass = await askPasscode({ title:'Lock ' + (opts.kind === 'audio' ? 'voice note' : opts.kind),
           desc:'Set a passcode.', ok:'Lock & send' });
         if (pass === null){ chat.messages = chat.messages.filter(x => x !== msg); saveChats(); rerender(); return; }
         const buf = await opts.blob.arrayBuffer();
         const enc = await vaultEncryptBytes(pass, buf);
-        meta.l = 1; meta.s = enc.salt; meta.i = enc.iv; meta.m = opts.mime || opts.blob.type || 'application/octet-stream';
-        const h = baseHeaders(); h['Filename'] = 'locked.bin'; h['Message'] = attMeta(meta);
-        res = await fetchWithTimeout(ntfyUrl(chat.code), { method:'PUT', body:new Blob([enc.ct], { type:'application/octet-stream' }), headers:h }, 60000);
+        meta.l = 1; meta.s = enc.salt; meta.i = enc.iv;
+        blob = new Blob([enc.ct], { type:'application/octet-stream' });
+        fileName = 'locked.bin';
         msg.locked = true;
-      } else {
-        const h = baseHeaders(); h['Filename'] = opts.fileName; h['Message'] = attMeta(meta);
-        res = await fetchWithTimeout(ntfyUrl(chat.code), { method:'PUT', body:opts.blob, headers:h }, 60000);
       }
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const j = await res.json().catch(() => null);
-      if (j && j.id){ msg.eventId = j.id; seenIds.add(j.id); }
-      if (j && j.attachment && j.attachment.url) msg.attachUrl = j.attachment.url;
+
+      let chunkSize = learnedChunkSize() || (blob.size <= 96 * 1024 ? blob.size : CHUNK_START_BYTES);
+      chunkSize = Math.max(16 * 1024, Math.min(chunkSize, Math.max(blob.size, 16 * 1024)));
+      let attempt = 0, done = false, lastError = null;
+
+      while (!done && attempt < 5){
+        const total = Math.max(1, Math.ceil(blob.size / chunkSize));
+        const fid = 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7) + 'a' + attempt;
+        meta.fid = fid; meta.tp = total;
+        msg.upload = { sent: 0, total };
+        saveChats();
+        if (state.activeCode === chat.code) renderMessages();
+
+        let failure = null;
+        for (let i = 0; i < total; i++){
+          const slice = blob.slice(i * chunkSize, Math.min(blob.size, (i + 1) * chunkSize));
+          const r = await uploadAttachmentPart(chat, slice, meta, i, total,
+            fileName + '.' + String(i + 1).padStart(3, '0') + 'of' + total);
+          if (r.error){ failure = r; break; }
+          if (i === 0){
+            if (r.id){ msg.eventId = r.id; seenIds.add(r.id); }
+            if (r.url && total === 1) msg.attachUrl = r.url;
+          }
+          msg.upload.sent = i + 1;
+          saveChats();
+          if (state.activeCode === chat.code) renderMessages();
+        }
+
+        if (!failure){ done = true; break; }
+        lastError = failure.error || 'upload failed';
+        attempt++;
+        if (failure.tooLarge && chunkSize > CHUNK_MIN_BYTES){
+          chunkSize = Math.max(CHUNK_MIN_BYTES, Math.floor(chunkSize / 2));
+          toast('ntfy refused that size (413) — retrying in ' + (humanSize(chunkSize) || 'smaller') + ' chunks', 3200);
+          continue;
+        }
+        await new Promise(res => setTimeout(res, 700 * attempt));
+      }
+
+      if (!done) throw new Error(lastError || 'upload failed');
+      rememberChunkSize(chunkSize);
       msg.status = 'sent';
-    } catch(err){ msg.status = 'failed'; toast('Send failed: ' + err.message); }
+      delete msg.upload;
+    } catch(err){
+      msg.status = 'failed';
+      delete msg.upload;
+      toast('Send failed: ' + ((err && err.message) || 'unknown error'), 5000);
+    }
     saveChats(); rerender();
   }
 
-  async function handleFile(file){
+  /* ---- receiving a file that arrived in parts ---- */
+  function collectAttachmentPart(chat, base, meta, att){
+    const total = Math.max(1, Number(meta.tp) || 1);
+    const idx = Math.max(0, Math.min(total - 1, Number(meta.p) || 0));
+    let entry = PARTS.get(meta.fid);
+    if (!entry){
+      const msg = Object.assign({}, base, {
+        sender: meta.n || 'Remote', kind: meta.k || 'file',
+        fileName: meta.fn || (att && att.name) || 'file',
+        size: Number(meta.sz) || 0, text: meta.c || '', quote: meta.q || null,
+        duration: meta.du || null, mime: meta.m || 'application/octet-stream',
+        locked: !!meta.l, status: 'receiving', upload: { sent: 0, total }
+      });
+      if (meta.l) msg.cipher = { salt: meta.s, iv: meta.i };
+      deliver(chat, msg);
+      entry = { msg, chatCode: chat.code, parts: new Map(), total, started: Date.now() };
+      PARTS.set(meta.fid, entry);
+    }
+    if (att && att.url && !entry.parts.has(idx)){
+      entry.parts.set(idx, att.url);
+      entry.msg.upload.sent = entry.parts.size;
+      if (state.activeCode === entry.chatCode) renderMessages();
+    }
+    if (entry.parts.size >= entry.total) finishIncomingAttachment(meta.fid, entry);
+
+    const now = Date.now();
+    PARTS.forEach((v, k) => { if (now - v.started > 600000) PARTS.delete(k); });
+  }
+
+  async function finishIncomingAttachment(fid, entry){
+    const msg = entry.msg;
+    try {
+      const blobs = [];
+      for (let i = 0; i < entry.total; i++){
+        const url = entry.parts.get(i);
+        if (!url) throw new Error('part ' + (i + 1) + ' never arrived');
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error('part ' + (i + 1) + ' expired on ntfy');
+        blobs.push(await resp.blob());
+      }
+      const blob = new Blob(blobs, { type: msg.mime || 'application/octet-stream' });
+      msg.size = blob.size;
+      delete msg.upload;
+      msg.status = 'received';
+      if (msg.locked){
+        // ciphertext only: unlocking decrypts it locally with the passcode
+        msg.attachUrl = URL.createObjectURL(blob);
+      } else if (msg.kind === 'image'){
+        const du = await blobToDataUrl(blob);
+        const small = await processImageSource(du, 1200, 0.82);
+        msg.dataUrl = small.dataUrl;
+        msg.cached = true;
+      } else {
+        msg.attachUrl = URL.createObjectURL(blob);
+      }
+      msg.receivedAt = Date.now();
+      saveChats();
+      if (state.activeCode === entry.chatCode) renderMessages();
+      notifyMsg(msg);
+    } catch(err){
+      msg.status = 'failed';
+      delete msg.upload;
+      if (state.activeCode === entry.chatCode) renderMessages();
+      toast('A file could not be rebuilt: ' + ((err && err.message) || 'parts expired'), 5000);
+    } finally {
+      PARTS.delete(fid);
+    }
+  }
+
+    async function handleFile(file){
     if (!file) return;
     const isImg = (file.type || '').startsWith('image/');
     if (isImg){
@@ -2769,53 +3070,111 @@
     micStream = null;
   }
 
-  /* ---------- Fullscreen Calling & Ringtone ---------- */
-  const CALL_SAMPLE_RATE = 8000;
-  const CALL_CHUNK_MS = 240;
-  const CALL_CHUNK_BYTES = Math.round(CALL_SAMPLE_RATE * CALL_CHUNK_MS / 1000);
-  const MAX_CALL_SECONDS = 300;
+  /* =====================================================================
+     VOICE CALLS — 100% ntfy.sh, no WebRTC, no ICE/STUN/TURN, no media server
+     ---------------------------------------------------------------------
+     • Web Audio captures the microphone, resamples it to 8 kHz telephony
+       rate, compresses every sample to 8 bit µ-law and cuts the stream into
+       20 ms frames.
+     • Frames are packed into one ntfy message holding 160-300 ms of audio and
+       POSTed to the same ntfy topic the chat already uses. A call packet is an
+       ordinary ntfy message, nothing else. There is no RTCPeerConnection, no
+       ICE, no SDP, no peer-to-peer media path.
+     • When ntfy answers 429/413/5xx or the network stalls, the sender backs
+       off and grows its packet size, so a rate limited connection degrades to
+       slightly delayed audio instead of a broken call.
+     • The receiver keeps a small jitter buffer and schedules every packet on
+       the Web Audio clock. Late packets are dropped, long gaps are trimmed and
+       packet edges are faded so speech does not click.
+     • Encryption is optional: arm the lock before calling and every packet is
+       AES-GCM with a key derived once per call (SHA-256 of call id + passcode),
+       never PBKDF2 per packet. Without a passcode frames use an ephemeral key
+       carried in the offer, which is obfuscation rather than secrecy: anyone
+       who can read the topic can read the offer. Use a passcode for privacy.
+     ===================================================================== */
+  const CALL_SAMPLE_RATE = 8000;                       // µ-law telephony rate
+  const CALL_FRAME_MS = 20;                            // capture frame
+  const CALL_FRAME_BYTES = Math.round(CALL_SAMPLE_RATE * CALL_FRAME_MS / 1000);
+  const CALL_PACKET_MS_MIN = 160;
+  const CALL_PACKET_MS_DEFAULT = 240;
+  const CALL_PACKET_MS_MAX = 300;
+  const CALL_MAX_RAW_BYTES = 2500;                     // body stays under ~3.5 kB
+  const CALL_QUEUE_MAX = 6;
+  const MAX_CALL_SECONDS = 1800;                       // 30 minutes
+  const CALL_HEARTBEAT_MS = 12000;
+  const CALL_SILENCE_TIMEOUT_MS = 30000;
+  const CALL_RING_TIMEOUT_MS = 45000;
 
-  let callCaptureSource = null, callProcessor = null, callMonitorGain = null;
-  let callActive = false;
-  let callConnected = false;
-  let callDirection = 'out';
-  let callTimerInterval = null;
-  let callSeconds = 0;
-  let callPasscode = null;
-  let callChatCode = null;
-  let callTimeout = null;
-  let callIncomingEncrypted = false;
-  let callMsg = null;
-  let callStats = freshCallStats();
-  let callTxQueue = [], callTxPumping = false, callTxSeq = 0;
-  let callRxExpected = null, callRxBuffer = new Map();
-  let callPlayHead = 0;
-  let callLegacyAudioQueue = [], callLegacyPlaying = false;
-  let callLastErrorToast = 0;
+  let callCaptureSource = null, callProcessor = null, callSinkGain = null;
   let callCaptureStarting = false;
+  let callActive = false, callConnected = false, callDirection = 'out';
+  let callChatCode = null, callMsg = null, callCid = null;
+  let callPasscode = null, callIncomingEncrypted = false;
+  let callKey = null, callKeyKind = 'none';
+  let callTimerInterval = null, callSeconds = 0, callTimeout = null;
+  let callStats = freshCallStats();
+  let callMicMuted = false, callRemoteMuted = false;
+  let callTxAcc = [], callTxAccBytes = 0, callTxQueue = [], callTxSeq = 0;
+  let callTxSending = false, callTxPacketMs = CALL_PACKET_MS_DEFAULT;
+  let callTxBackoff = 0, callTxLastRtt = 0, callTxBusyNote = 0;
+  let callRxExpected = null, callRxBuffer = new Map();
+  let callRxPlayHead = 0, callRxPrefilled = false, callRxGain = null;
+  let callRxLastPacketAt = 0, callRxWatch = null, callHeartbeat = null, callRxGapTimer = null;
+  let callLastErrorToast = 0, callPeerMuted = false;
 
   function freshCallStats(){
-    return { sentBytes:0, recvBytes:0, sentChunks:0, recvChunks:0, errors:0, startedAt:0 };
+    return { sentBytes:0, recvBytes:0, sentChunks:0, recvChunks:0, errors:0, dropped:0,
+      startedAt:0, lastRtt:0, peakQueue:0 };
+  }
+  const callSleep = (ms) => new Promise(res => setTimeout(res, ms));
+
+  /* ---------- packet encryption (one key per call, not per packet) ---------- */
+  async function callImportRawKey(b64){
+    const raw = b64ToBytes(b64 || '');
+    if (!raw.length) throw new Error('empty key');
+    return crypto.subtle.importKey('raw', raw, { name:'AES-GCM' }, false, ['encrypt','decrypt']);
+  }
+  async function callDeriveKey(pass, cid){
+    const data = new TextEncoder().encode('ntfychat-call|' + cid + '|' + pass);
+    const digest = await crypto.subtle.digest('SHA-256', data);
+    return crypto.subtle.importKey('raw', digest, { name:'AES-GCM' }, false, ['encrypt','decrypt']);
+  }
+  async function callFrameEncrypt(key, bytes){
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, bytes);
+    return bufToB64(iv) + '.' + bufToB64(new Uint8Array(ct));
+  }
+  async function callFrameDecrypt(key, payload){
+    const parts = String(payload || '').split('.');
+    if (parts.length !== 2) throw new Error('bad frame');
+    const iv = b64ToBytes(parts[0]);
+    const ct = b64ToBytes(parts[1]);
+    const pt = await crypto.subtle.decrypt({ name:'AES-GCM', iv }, key, ct);
+    return new Uint8Array(pt);
   }
 
-  /* Ringtone. Uses ringtone.mp3, with a synthesised fallback. */
+  /* ---------- ringtone, ringback and DTMF (all optional via Settings) ---------- */
   let ringTimer = null;
+  function ringSilent(){ return state.ring === false; }
+
   function ringBeepOnce(){
+    if (ringSilent()) return;
     const ctx = unlockAudio();
-    if (!ctx || ctx.state !== 'running'){ vibrate([0,200,120,200]); return; }
+    if (!ctx || ctx.state !== 'running'){ vibrate([0,240,140,240]); return; }
     const t0 = ctx.currentTime;
-    [0, 0.45].forEach(function(off){
+    [0, 0.5].forEach(function(off){
       const o = ctx.createOscillator(), g = ctx.createGain();
       o.type = 'sine'; o.frequency.value = 880;
       g.gain.setValueAtTime(0.0001, t0 + off);
-      g.gain.exponentialRampToValueAtTime(0.13, t0 + off + 0.03);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + off + 0.35);
+      g.gain.exponentialRampToValueAtTime(0.12, t0 + off + 0.04);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + off + 0.38);
       o.connect(g); g.connect(ctx.destination);
-      o.start(t0 + off); o.stop(t0 + off + 0.4);
+      o.start(t0 + off); o.stop(t0 + off + 0.42);
     });
-    vibrate([0,200,120,200]);
+    vibrate([0,240,140,240]);
   }
   function ringFallbackStart(){
+    if (ringSilent()) return;
     if (ringTimer) return;
     ringBeepOnce();
     ringTimer = setInterval(ringBeepOnce, 2200);
@@ -2825,6 +3184,10 @@
   }
   function playRingtone(){
     stopRingtone();
+    if (ringSilent()){
+      if (callActive) logCallData('note', 'silent call · ringtone is off in Settings');
+      return;
+    }
     unlockAudio();
     const el = $('ringtoneAudio');
     if (el){
@@ -2842,35 +3205,60 @@
     if (el){ try { el.pause(); el.currentTime = 0; } catch(_){} }
     ringFallbackStop();
   }
+  function playDtmfTone(a, b){
+    const ctx = unlockAudio();
+    if (!ctx) return;
+    const t0 = ctx.currentTime;
+    [[a, 0.16], [b, 0.16]].forEach(function(pair){
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = pair[0];
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.07, t0 + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.14);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(t0); o.stop(t0 + 0.16);
+    });
+  }
 
+  /* ---------- call UI ---------- */
   function prepareCallUI(isRinging){
     const cs = $('callScreen');
-    if (state.experimental) {
+    if (!cs) return;
+    if (state.experimental){
       cs.classList.add('exp-call-ui');
-      $('expGridActions').style.display = 'grid';
+      const g = $('expGridActions'); if (g) g.style.display = 'grid';
     } else {
       cs.classList.remove('exp-call-ui');
-      $('expGridActions').style.display = 'none';
+      const g = $('expGridActions'); if (g) g.style.display = 'none';
     }
-    if (isRinging) cs.classList.add('ringing');
-    else cs.classList.remove('ringing');
+    cs.classList.toggle('ringing', !!isRinging);
   }
 
   function updateCallDataUI(){
     const sent = $('callSentStat'), recv = $('callRecvStat'), packets = $('callPacketStat');
-    if (!sent || !recv || !packets) return;
-    sent.textContent = humanSize(callStats.sentBytes) || '0 B';
-    recv.textContent = humanSize(callStats.recvBytes) || '0 B';
-    const total = callStats.sentChunks + callStats.recvChunks;
-    packets.textContent = total + (total === 1 ? ' packet' : ' packets');
+    if (sent) sent.textContent = humanSize(callStats.sentBytes) || '0 B';
+    if (recv) recv.textContent = humanSize(callStats.recvBytes) || '0 B';
+    if (packets){
+      const total = callStats.sentChunks + callStats.recvChunks;
+      packets.textContent = total + (total === 1 ? ' packet' : ' packets');
+    }
     const dot = $('callDataDot');
     if (dot) dot.className = 'cds-dot' + (callConnected ? (callStats.errors ? ' err' : '') : ' idle');
     const codec = $('callCodecInfo');
-    if (codec) codec.textContent = 'Opus · 10 kbps';
+    if (codec) codec.textContent = 'µ-law 8 kHz · ' + callTxPacketMs + ' ms packets';
     const enc = $('callEncInfo');
-    if (enc) enc.textContent = callPasscode ? 'AES-GCM (passcode)' : 'AES-GCM (session key)';
+    if (enc) enc.textContent = callKeyKind === 'pass' ? 'AES-GCM · passcode'
+      : callKeyKind === 'session' ? 'AES-GCM · ephemeral key' : 'Off · public topic';
     const errs = $('callErrInfo');
-    if (errs) errs.textContent = String(callStats.errors);
+    if (errs) errs.textContent = String(callStats.errors) + (callStats.dropped ? ' · ' + callStats.dropped + ' late' : '');
+    const noteEl = $('callStateNote');
+    if (noteEl){
+      const bits = [];
+      if (callTxQueue.length) bits.push(callTxQueue.length + ' queued');
+      if (callTxLastRtt) bits.push(Math.round(callTxLastRtt) + ' ms');
+      if (callTxBackoff) bits.push('backing off');
+      noteEl.textContent = bits.join(' · ');
+    }
   }
 
   function logCallData(kind, text){
@@ -2880,7 +3268,7 @@
     line.className = 'log-' + kind;
     line.textContent = text;
     log.appendChild(line);
-    while (log.children.length > 60) log.removeChild(log.firstChild);
+    while (log.children.length > 80) log.removeChild(log.firstChild);
     log.scrollTop = log.scrollHeight;
   }
 
@@ -2888,7 +3276,7 @@
     callStats.errors++;
     logCallData('err', '! ' + msg);
     updateCallDataUI();
-    if (Date.now() - callLastErrorToast > 5000){
+    if (Date.now() - callLastErrorToast > 6000){
       callLastErrorToast = Date.now();
       toast('Call: ' + msg, 4000);
     }
@@ -2898,13 +3286,12 @@
     callStats = freshCallStats();
     const log = $('callDataLog');
     if (log) log.innerHTML = '';
-    const details = $('callDataDetails');
-    if (details) details.classList.remove('show');
     updateCallDataUI();
   }
 
   function updateCallMessage(patch){
     if (!callMsg) return;
+    callMsg.call = callMsg.call || {};
     Object.assign(callMsg.call, patch);
     callMsg.status = 'sent';
     saveChats();
@@ -2934,14 +3321,13 @@
     const duration = callStats.startedAt ? Math.max(0, Math.round((Date.now() - callStats.startedAt) / 1000)) : 0;
     const chatCode = callChatCode;
     Object.assign(callMsg.call, {
-      status,
-      duration,
+      status, duration,
       sentBytes: callStats.sentBytes,
       recvBytes: callStats.recvBytes,
       sentChunks: callStats.sentChunks,
       recvChunks: callStats.recvChunks,
       errors: callStats.errors,
-      encrypted: !!callPasscode || callMsg.call.encrypted,
+      encrypted: !!callPasscode || !!(callMsg.call && callMsg.call.encrypted),
       endedAt: Date.now()
     });
     callMsg.status = 'sent';
@@ -2951,213 +3337,7 @@
     if (chatCode && state.activeCode === chatCode) renderMessages();
   }
 
-  async function initiateCall(){
-    if (callActive){ toast('You are already in a call'); return; }
-    if (mediaRecorder && mediaRecorder.state === 'recording'){ toast('Finish the voice note first'); return; }
-    const chat = activeChat();
-    if (!chat){ toast('Open a conversation first'); return; }
-    if (chat.group){ toast('Calls work in one to one chats only'); return; }
-    if (!getAudioCtx()){ toast('Voice calls are not supported on this browser'); return; }
-
-    unlockAudio();
-    try {
-      await acquireMic();
-    } catch(err){
-      toast(micErrorText(err), 6000);
-      return;
-    }
-
-    let pass = null;
-    if (lockArmed && vaultAvailable()){
-      pass = await askPasscode({ title:'Encrypted Call', desc:'Enter a passcode. The other side must enter the same one.', ok:'Start Call' });
-      if (pass === null){ releaseMic(); return; }
-    }
-
-    callChatCode = chat.code;
-    callDirection = 'out';
-    callIncomingEncrypted = false;
-    callPasscode = pass || null;
-    callActive = true;
-    callConnected = false;
-    callSeconds = 0;
-    callTxSeq = 0;
-    callRxExpected = 1;
-    callRxBuffer.clear();
-    resetCallDataUI();
-
-    prepareCallUI(true);
-    $('callScreen').classList.add('show');
-    $('callPeerName').textContent = chat.title || chat.code;
-    $('callAvatar').textContent = avatarText(chat.title || chat.code);
-    $('callStateText').textContent = callPasscode ? 'Calling… encrypted' : 'Calling… Ringing…';
-    $('callAcceptBtn').style.display = 'none';
-    $('callTimerDisplay').style.display = 'none';
-    $('callTimerDisplay').textContent = '05:00 left';
-    callMsg = null;
-    addCallMessage('out');
-    updateCallDataUI();
-
-    playRingtone();
-    logCallData('out', '↑ call offer sent');
-    const r = await sendControlEx(chat.code, { t:'v_offer', pass: !!callPasscode }, { ephemeral:true, raw:true });
-    if (!r.id){
-      callError(r.error || 'could not send call offer');
-      toast('Could not reach the other side');
-      terminateCall(false, 'cancelled');
-      return;
-    }
-    logCallData('out', '↑ offer accepted by ntfy');
-    clearTimeout(callTimeout);
-    callTimeout = setTimeout(() => {
-      if (callActive && !callConnected){
-        toast('No answer');
-        terminateCall(true, 'missed');
-      }
-    }, 45000);
-  }
-
-  async function handleIncomingCallOffer(chat, from, opts){
-    if (from === state.name) return;
-    if (callActive){
-      if (callChatCode === chat.code && callDirection === 'in' && !callConnected) return;
-      sendControl(chat.code, { t:'v_reject' }, true);
-      return;
-    }
-    callChatCode = chat.code;
-    callDirection = 'in';
-    callIncomingEncrypted = !!(opts && opts.pass);
-    callPasscode = null;
-    callActive = true;
-    callConnected = false;
-    callSeconds = 0;
-    callTxSeq = 0;
-    callRxExpected = 1;
-    callRxBuffer.clear();
-    resetCallDataUI();
-    callMsg = null;
-
-    prepareCallUI(true);
-    $('callScreen').classList.add('show');
-    $('callPeerName').textContent = chat.title || chat.code;
-    $('callAvatar').textContent = avatarText(chat.title || chat.code);
-    $('callStateText').textContent = 'Incoming ' + (callIncomingEncrypted ? 'encrypted ' : '') + 'call from ' + from;
-    $('callAcceptBtn').style.display = 'flex';
-    $('callTimerDisplay').style.display = 'none';
-    $('callTimerDisplay').textContent = '05:00 left';
-    addCallMessage('in');
-    updateCallDataUI();
-    logCallData('in', '↓ call offer received from ' + from);
-    playRingtone();
-
-    clearTimeout(callTimeout);
-    callTimeout = setTimeout(() => {
-      if (callActive && !callConnected){
-        toast('Missed call from ' + from);
-        terminateCall(false, 'missed');
-      }
-    }, 45000);
-  }
-
-  async function acceptCall(){
-    if (!callActive || callConnected) return;
-    unlockAudio();
-    try {
-      await acquireMic();
-    } catch(err){
-      toast(micErrorText(err), 6000);
-      const chat0 = state.chats.find(c => c.code === callChatCode) || activeChat();
-      if (chat0) sendControl(chat0.code, { t:'v_reject' }, true);
-      terminateCall(false, 'declined');
-      return;
-    }
-    const chat = state.chats.find(c => c.code === callChatCode) || activeChat();
-    if (!chat) return;
-    if (callIncomingEncrypted){
-      if (!vaultAvailable()){
-        toast('Encrypted calls need a secure (HTTPS) page');
-        sendControl(chat.code, { t:'v_reject' }, true);
-        terminateCall(false, 'declined');
-        return;
-      }
-      const pass = await askPasscode({ title:'Encrypted call', desc:'Enter the passcode for this call.', ok:'Join call' });
-      if (pass === null){
-        sendControl(chat.code, { t:'v_reject' }, true);
-        terminateCall(false, 'declined');
-        return;
-      }
-      callPasscode = pass;
-    }
-
-    stopRingtone();
-    clearTimeout(callTimeout); callTimeout = null;
-    prepareCallUI(false);
-    callConnected = true;
-    callStats.startedAt = Date.now();
-    updateCallMessage({ status:'connected', encrypted: !!callPasscode });
-    $('callAcceptBtn').style.display = 'none';
-    $('callStateText').textContent = 'Connected';
-    $('callTimerDisplay').style.display = 'block';
-    updateCallDataUI();
-    startCallTimer();
-    logCallData('note', 'connected · sending audio over ntfy');
-    sendControl(chat.code, { t:'v_accept' }, true);
-
-    try { await startCallCapture(); }
-    catch(err){
-      callError(micErrorText(err));
-      toast('Microphone problem — you can listen but not talk. ' + micErrorText(err), 6000);
-    }
-  }
-
-  async function handleCallAccepted(chat, from){
-    if (!callActive || callConnected || callDirection !== 'out') return;
-    if (callChatCode && chat.code !== callChatCode) return;
-    clearTimeout(callTimeout); callTimeout = null;
-    stopRingtone();
-    prepareCallUI(false);
-    callConnected = true;
-    callStats.startedAt = Date.now();
-    updateCallMessage({ status:'connected', encrypted: !!callPasscode });
-    $('callStateText').textContent = 'Connected';
-    $('callTimerDisplay').style.display = 'block';
-    updateCallDataUI();
-    startCallTimer();
-    logCallData('in', '↓ call accepted');
-    try { await startCallCapture(); }
-    catch(err){
-      callError(micErrorText(err));
-      toast('Microphone problem — you can listen but not talk. ' + micErrorText(err), 6000);
-    }
-  }
-
-  function handleCallRejected(chat, from){
-    if (!callActive || callConnected) return;
-    toast((from || 'The other side') + ' declined the call');
-    logCallData('err', '! call declined');
-    terminateCall(false, 'declined');
-  }
-
-  function startCallTimer(){
-    clearInterval(callTimerInterval);
-    callSeconds = 0;
-    updateCallTimerUI();
-    callTimerInterval = setInterval(() => {
-      callSeconds++;
-      updateCallTimerUI();
-      if (callSeconds >= MAX_CALL_SECONDS) {
-        toast('5-minute call limit reached.');
-        terminateCall(true, 'ended');
-      }
-    }, 1000);
-  }
-
-  function updateCallTimerUI(){
-    const left = Math.max(0, MAX_CALL_SECONDS - callSeconds);
-    const m = String(Math.floor(left / 60)).padStart(2, '0');
-    const s = String(left % 60).padStart(2, '0');
-    $('callTimerDisplay').textContent = `${m}:${s} left`;
-  }
-
+  /* ---------- microphone capture: 48 kHz in, 8 kHz µ-law out ---------- */
   async function startCallCapture(){
     if (callProcessor || callCaptureStarting) return;
     callCaptureStarting = true;
@@ -3166,24 +3346,22 @@
       if (!ctx) throw new Error('Web Audio is not supported on this browser');
       if (ctx.state === 'suspended'){ try { await ctx.resume(); } catch(_){} }
       if (ctx.state !== 'running') throw new Error('Audio is blocked by the browser — tap the call screen, then try again.');
-
       const stream = await acquireMic();
       const source = ctx.createMediaStreamSource(stream);
       const proc = ctx.createScriptProcessor
         ? ctx.createScriptProcessor(2048, 1, 1)
         : (ctx.createJavaScriptNode ? ctx.createJavaScriptNode(2048, 1, 1) : null);
       if (!proc) throw new Error('Audio capture is not supported on this browser');
-
-      const mute = ctx.createGain();
-      mute.gain.value = 0;
+      const sink = ctx.createGain();
+      sink.gain.value = 0;
 
       const ratio = ctx.sampleRate / CALL_SAMPLE_RATE;
-      let phase = 0, prev = 0;
-      let chunk = new Uint8Array(CALL_CHUNK_BYTES), fill = 0;
-      let capturedSamples = 0;
+      let phase = 0, prevSample = 0;
+      let frame = new Uint8Array(CALL_FRAME_BYTES), fill = 0;
+      let sampledForNotice = 0, noticeSent = false;
 
       proc.onaudioprocess = (ev) => {
-        if (!callActive || !callConnected) return;
+        if (!callActive) return;
         const input = ev.inputBuffer.getChannelData(0);
         const n = input.length;
         if (!n) return;
@@ -3191,34 +3369,35 @@
         while (idx < n){
           const i0 = Math.floor(idx);
           const frac = idx - i0;
-          let s0, s1;
-          if (i0 < 0) s0 = prev; else s0 = input[i0] || 0;
-          if (i0 + 1 < 0) s1 = prev;
-          else if (i0 + 1 < n) s1 = input[i0 + 1];
-          else s1 = s0;
-          const sample = s0 + (s1 - s0) * frac;
-          chunk[fill++] = linearToUlaw(Math.max(-32768, Math.min(32767, Math.round(sample * 32767))));
-          capturedSamples++;
-          if (fill >= chunk.length){
-            enqueueCallChunk(chunk.slice(0));
+          let v = 0;
+          if (!callMicMuted){
+            const s0 = (i0 >= 0 && i0 < n) ? input[i0] : prevSample;
+            const s1 = (i0 + 1 >= 0 && i0 + 1 < n) ? input[i0 + 1] : s0;
+            v = s0 + (s1 - s0) * frac;
+          }
+          frame[fill++] = linearToUlaw(Math.max(-32768, Math.min(32767, Math.round(v * 32767))));
+          if (fill >= frame.length){
+            pushCallFrame(frame);
+            frame = new Uint8Array(CALL_FRAME_BYTES);
             fill = 0;
           }
           idx += ratio;
         }
         phase = idx - n;
-        prev = input[n - 1] || 0;
-        if (capturedSamples >= CALL_SAMPLE_RATE * 2){
-          capturedSamples = 0;
-          if (!callTxPumping && !callTxQueue.length) logCallData('note', 'microphone capture active');
+        prevSample = input[n - 1] || 0;
+        sampledForNotice += n / ctx.sampleRate;
+        if (!noticeSent && sampledForNotice > 1.5){
+          noticeSent = true;
+          logCallData('note', 'microphone capture active · 8 kHz µ-law');
         }
       };
 
       source.connect(proc);
-      proc.connect(mute);
-      mute.connect(ctx.destination);
+      proc.connect(sink);
+      sink.connect(ctx.destination);
       callCaptureSource = source;
       callProcessor = proc;
-      callMonitorGain = mute;
+      callSinkGain = sink;
     } finally {
       callCaptureStarting = false;
     }
@@ -3230,184 +3409,533 @@
       callProcessor = null;
     }
     if (callCaptureSource){ try { callCaptureSource.disconnect(); } catch(_){} callCaptureSource = null; }
-    if (callMonitorGain){ try { callMonitorGain.disconnect(); } catch(_){} callMonitorGain = null; }
+    if (callSinkGain){ try { callSinkGain.disconnect(); } catch(_){} callSinkGain = null; }
+    callTxAcc = []; callTxAccBytes = 0; callTxQueue = [];
     releaseMic();
   }
 
-  function enqueueCallChunk(bytes){
-    if (!bytes || !bytes.length || !callActive || !callConnected) return;
-    if (callTxQueue.length >= 12){
-      const dropped = callTxQueue.length - 11;
-      callTxQueue.splice(0, dropped);
-      if (!callStats.queueDropNotified){
-        callStats.queueDropNotified = true;
-        callError('network is slower than the audio stream; older audio packets were discarded');
-      }
-    } else if (callTxQueue.length < 4) {
-      callStats.queueDropNotified = false;
-    }
-    callTxQueue.push(bytes);
-    pumpCallSendQueue();
+  /* ---------- packetiser + paced sender ---------- */
+  function pushCallFrame(frame){
+    callTxAcc.push(frame);
+    callTxAccBytes += frame.length;
+    const target = Math.min(CALL_MAX_RAW_BYTES, Math.round(CALL_SAMPLE_RATE * callTxPacketMs / 1000));
+    if (callTxAccBytes >= target) flushCallPacket();
+    if (callTxAccBytes > CALL_MAX_RAW_BYTES * 2) flushCallPacket();
   }
 
-  async function pumpCallSendQueue(){
-    if (callTxPumping) return;
-    if (!callChatCode){ callError('missing ntfy destination topic'); return; }
-    callTxPumping = true;
+  function flushCallPacket(){
+    if (!callTxAccBytes) return;
+    const total = new Uint8Array(callTxAccBytes);
+    let off = 0;
+    for (let i = 0; i < callTxAcc.length; i++){ total.set(callTxAcc[i], off); off += callTxAcc[i].length; }
+    callTxAcc = []; callTxAccBytes = 0;
+
+    // Never build a packet the ntfy body limit would reject (413).
+    let start = 0;
+    while (start < total.length){
+      const slice = total.subarray(start, Math.min(total.length, start + CALL_MAX_RAW_BYTES));
+      callTxQueue.push(slice.slice(0));
+      start += CALL_MAX_RAW_BYTES;
+    }
+    if (callTxQueue.length > CALL_QUEUE_MAX){
+      const dropped = callTxQueue.length - CALL_QUEUE_MAX;
+      callTxQueue.splice(0, dropped);
+      callStats.dropped += dropped;
+      if (Date.now() - callTxBusyNote > 8000){
+        callTxBusyNote = Date.now();
+        logCallData('err', '! link too slow, dropped ' + dropped + ' older packet(s)');
+      }
+    }
+    callStats.peakQueue = Math.max(callStats.peakQueue, callTxQueue.length);
+    callPumpSend();
+  }
+
+  function callAdaptPacket(load){
+    // load > 0 means the network is behind, load < 0 means we have headroom.
+    if (load > 0){
+      callTxPacketMs = Math.min(CALL_PACKET_MS_MAX, callTxPacketMs + 20);
+    } else {
+      callTxPacketMs = Math.max(CALL_PACKET_MS_MIN, callTxPacketMs - 10);
+    }
+    updateCallDataUI();
+  }
+
+  async function callPumpSend(){
+    if (callTxSending) return;
+    callTxSending = true;
     try {
       while (callTxQueue.length && callActive && callConnected){
         const bytes = callTxQueue.shift();
         const seq = ++callTxSeq;
-        let obj = { t:'v_audio', seq, d: bufToB64(bytes) };
-        if (callPasscode && vaultAvailable()){
-          try {
-            const enc = await vaultEncryptBytes(callPasscode, bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
-            obj = { t:'v_audio', seq, e:1, s:enc.salt, i:enc.iv, d: bufToB64(enc.ct) };
-          } catch(err){
-            callError('encryption failed');
-            continue;
+        const ms = Math.max(1, Math.round(bytes.length / CALL_SAMPLE_RATE * 1000));
+        let obj;
+        try {
+          if (callKey){
+            obj = { t:'v_audio', seq, ms, e:1, d: await callFrameEncrypt(callKey, bytes) };
+          } else {
+            obj = { t:'v_audio', seq, ms, d: bufToB64(bytes) };
           }
+        } catch(err){
+          callError('could not encrypt an audio packet');
+          continue;
         }
-        const r = await sendControlEx(callChatCode, obj, { ephemeral:true, raw:true, timeout:9000 });
+        const t0 = (window.performance && performance.now) ? performance.now() : Date.now();
+        const r = await sendControlEx(callChatCode, obj, { ephemeral:true, raw:true, timeout:15000 });
+        callTxLastRtt = ((window.performance && performance.now) ? performance.now() : Date.now()) - t0;
         if (r.id){
           callStats.sentBytes += bytes.length;
           callStats.sentChunks++;
-          logCallData('out', '↑ #' + seq + ' · ' + humanSize(bytes.length));
+          callTxBackoff = 0;
+          callAdaptPacket(callTxQueue.length >= 2 || callTxLastRtt > 1400 ? 1 : -1);
+          if (callStats.sentChunks % 12 === 1){
+            logCallData('out', '↑ #' + seq + ' · ' + humanSize(bytes.length) + ' · ' + Math.round(callTxLastRtt) + ' ms');
+          }
         } else if (callActive && callConnected){
+          const st = r.status;
+          const retryable = !st || st === 413 || st === 429 || st >= 500;
+          callStats.errors++;
+          if (retryable){
+            callTxBackoff = callTxBackoff ? Math.min(4000, callTxBackoff * 2) : 250;
+            callAdaptPacket(1);
+            logCallData('err', 'send failed (' + (r.error || 'network') + ') · backoff ' + callTxBackoff + ' ms · ' + callTxPacketMs + ' ms packets');
+            callTxQueue.unshift(bytes);
+            if (callTxQueue.length > CALL_QUEUE_MAX) callTxQueue.splice(0, callTxQueue.length - CALL_QUEUE_MAX);
+            updateCallDataUI();
+            await callSleep(callTxBackoff);
+            break;
+          }
           callError(r.error || 'send failed');
         }
         updateCallDataUI();
       }
     } finally {
-      callTxPumping = false;
-      if (callTxQueue.length && callActive && callConnected) setTimeout(pumpCallSendQueue, 60);
+      callTxSending = false;
     }
+    if (callTxQueue.length && callActive && callConnected) setTimeout(callPumpSend, callTxBackoff ? callTxBackoff : 12);
   }
 
-  function playCallAudio(bytes){
+  /* ---------- jitter buffer + playout ---------- */
+  function callEnsureRxGain(ctx){
+    if (!ctx) return null;
+    if (!callRxGain){
+      try {
+        callRxGain = ctx.createGain();
+        callRxGain.gain.value = callRemoteMuted ? 0 : 1;
+        callRxGain.connect(ctx.destination);
+      } catch(_){ callRxGain = null; }
+    }
+    return callRxGain;
+  }
+
+  function callPlayPacket(bytes){
     const ctx = unlockAudio();
-    if (!ctx) return;
+    if (!ctx || !bytes || !bytes.length) return;
     const samples = ulawToFloat(bytes);
-    const buffer = ctx.createBuffer(1, samples.length, CALL_SAMPLE_RATE);
-    buffer.copyToChannel(samples, 0);
+    // 6 ms fade at each edge removes the click when packets do not line up exactly.
+    const fade = Math.min(Math.floor(CALL_SAMPLE_RATE * 0.006), Math.floor(samples.length / 2));
+    for (let i = 0; i < fade; i++){
+      const g = i / fade;
+      samples[i] *= g;
+      samples[samples.length - 1 - i] *= g;
+    }
+    let buffer;
+    try {
+      buffer = ctx.createBuffer(1, samples.length, CALL_SAMPLE_RATE);
+      buffer.copyToChannel(samples, 0);
+    } catch(_){ return; }
     const src = ctx.createBufferSource();
     src.buffer = buffer;
-    src.connect(ctx.destination);
+    const gain = callEnsureRxGain(ctx);
+    try { src.connect(gain || ctx.destination); } catch(_){ return; }
     const now = ctx.currentTime;
-    if (callPlayHead < now + 0.05) callPlayHead = now + 0.09;
-    if (callPlayHead > now + 1.2){
-      callPlayHead = now + 0.12;
-      logCallData('note', '… jitter buffer reset');
+    if (callRxPlayHead < now + 0.02){
+      // Underrun: start again slightly ahead so playback stays continuous.
+      callRxPlayHead = now + (callRxPrefilled ? 0.07 : 0.22);
+      if (callRxPrefilled) logCallData('note', '… buffer reset (network hiccup)');
+      callRxPrefilled = true;
     }
-    try { src.start(callPlayHead); } catch(_) { return; }
-    callPlayHead += buffer.duration;
+    if (callRxPlayHead > now + 1.4){
+      callRxPlayHead = now + 0.25;
+      logCallData('note', '… latency trimmed');
+    }
+    try { src.start(callRxPlayHead); } catch(_){ return; }
+    callRxPlayHead += buffer.duration;
+  }
+
+  /* A single lost packet must not stall the call: if the expected sequence
+     number has not arrived after ~320 ms, jump to the next packet we do have
+     and log how many were lost. */
+  function callScheduleGapSkip(){
+    if (callRxGapTimer) return;
+    callRxGapTimer = setTimeout(() => {
+      callRxGapTimer = null;
+      if (!callActive || !callConnected || !callRxBuffer.size) return;
+      let lowest = Infinity;
+      callRxBuffer.forEach((_, k) => { if (k < lowest) lowest = k; });
+      if (lowest !== Infinity && lowest > callRxExpected){
+        const lost = lowest - callRxExpected;
+        callStats.dropped += lost;
+        logCallData('note', '… skipped ' + lost + ' lost packet(s) #' + callRxExpected + '-' + (lowest - 1));
+        callRxExpected = lowest;
+        callDrainRx();
+      }
+      if (callRxBuffer.size) callScheduleGapSkip();
+    }, 320);
+  }
+
+  function callDrainRx(){
+    while (callRxBuffer.has(callRxExpected)){
+      const data = callRxBuffer.get(callRxExpected);
+      callRxBuffer.delete(callRxExpected);
+      callRxExpected++;
+      callPlayPacket(data);
+    }
+    updateCallDataUI();
   }
 
   async function receiveCallAudio(chat, from, c){
-    if (!callActive || !callConnected || from === state.name) return;
+    if (!callActive || !callConnected || from === state.name || !c) return;
     let bytes = null;
     try {
       if (c.e){
-        if (!callPasscode){
-          if (!vaultAvailable()) throw new Error('encrypted audio needs HTTPS');
+        if (!callKey){
+          if (!vaultAvailable()){ callError('this call is encrypted and cannot be unlocked here'); return; }
           const pass = await askPasscode({ title:'Encrypted call', desc:'Enter the passcode for this call.', ok:'Unlock audio' });
           if (pass === null) return;
           callPasscode = pass;
+          callKey = await callDeriveKey(pass, callCid || 'call');
+          callKeyKind = 'pass';
           updateCallDataUI();
         }
-        const ct = b64ToBytes(c.d || '');
-        const pt = await vaultDecryptBytes(callPasscode, c.s, c.i, ct.buffer);
-        bytes = new Uint8Array(pt);
+        bytes = await callFrameDecrypt(callKey, c.d || '');
       } else {
         bytes = b64ToBytes(c.d || '');
       }
     } catch(err){
-      callError('could not decrypt an audio packet');
+      callError('could not read an audio packet');
       return;
     }
     if (!bytes || !bytes.length) return;
 
+    callRxLastPacketAt = Date.now();
+    callStats.recvBytes += bytes.length;
+    callStats.recvChunks++;
+
     const seq = Number(c.seq) || 0;
-    if (seq > 0){
-      if (callRxExpected === null) callRxExpected = seq;
-      if (seq < callRxExpected) return;
-      callRxBuffer.set(seq, bytes);
-      if (callRxBuffer.size > 24){
-        let min = Infinity;
-        callRxBuffer.forEach((_, k) => { if (k < min) min = k; });
-        if (min !== Infinity && min > callRxExpected){
-          logCallData('note', '… skipped missing packets ' + callRxExpected + '–' + (min - 1));
-          callRxExpected = min;
-        }
+    if (!seq){ callPlayPacket(bytes); updateCallDataUI(); return; }
+
+    if (callRxExpected === null) callRxExpected = seq;
+    if (seq < callRxExpected){ callStats.dropped++; updateCallDataUI(); return; }
+
+    callRxBuffer.set(seq, bytes);
+
+    if (seq > callRxExpected) callScheduleGapSkip();
+    callDrainRx();
+  }
+
+  /* ---------- in-call controls ---------- */
+  function callToggleMute(){
+    callMicMuted = !callMicMuted;
+    const btn = $('expMuteBtn');
+    if (btn) btn.classList.toggle('active', callMicMuted);
+    logCallData('note', callMicMuted ? 'microphone muted (silence is still sent)' : 'microphone live');
+    if (callActive && callConnected) sendControl(callChatCode, { t:'v_mute', on: callMicMuted ? 1 : 0 }, true);
+    toast(callMicMuted ? 'Microphone muted' : 'Microphone live');
+  }
+
+  function callToggleRemote(){
+    callRemoteMuted = !callRemoteMuted;
+    if (callRxGain) callRxGain.gain.value = callRemoteMuted ? 0 : 1;
+    const btn = $('expSpeakerBtn');
+    if (btn) btn.classList.toggle('active', callRemoteMuted);
+    logCallData('note', callRemoteMuted ? 'incoming audio muted' : 'incoming audio on');
+    toast(callRemoteMuted ? 'Incoming audio muted' : 'Incoming audio on');
+  }
+
+  function handleCallMute(chat, from, c){
+    if (!callActive || from === state.name) return;
+    callPeerMuted = !!(c && c.on);
+    logCallData('note', callPeerMuted ? 'the other side muted their microphone' : 'the other side unmuted');
+    if (callConnected) $('callStateText').textContent = callPeerMuted ? 'Connected · they are muted' : 'Connected';
+  }
+
+  async function callSendMuteState(){
+    if (!callActive || !callConnected) return;
+    await sendControl(callChatCode, { t:'v_mute', on: callMicMuted ? 1 : 0 }, true);
+  }
+
+  /* ---------- call timer + watchdogs ---------- */
+  function startCallTimer(){
+    clearInterval(callTimerInterval);
+    callSeconds = 0;
+    updateCallTimerUI();
+    callTimerInterval = setInterval(() => {
+      callSeconds++;
+      updateCallTimerUI();
+      if (callSeconds === MAX_CALL_SECONDS - 60) toast('One minute of call time left', 4000);
+      if (callSeconds >= MAX_CALL_SECONDS){
+        toast('Call limit reached (' + Math.round(MAX_CALL_SECONDS / 60) + ' min)');
+        terminateCall(true, 'ended');
       }
-      while (callRxBuffer.has(callRxExpected)){
-        const data = callRxBuffer.get(callRxExpected);
-        callRxBuffer.delete(callRxExpected);
-        const shown = callRxExpected;
-        callRxExpected++;
-        playCallAudio(data);
-        callStats.recvBytes += data.length;
-        callStats.recvChunks++;
-        logCallData('in', '↓ #' + shown + ' · ' + humanSize(data.length));
+    }, 1000);
+  }
+
+  function updateCallTimerUI(){
+    const left = Math.max(0, MAX_CALL_SECONDS - callSeconds);
+    const m = String(Math.floor(left / 60)).padStart(2, '0');
+    const s = String(left % 60).padStart(2, '0');
+    const el = $('callTimerDisplay');
+    if (el) el.textContent = m + ':' + s + ' left';
+  }
+
+  function startCallWatchdogs(){
+    clearInterval(callHeartbeat);
+    callHeartbeat = setInterval(() => {
+      if (!callActive || !callConnected) return;
+      sendControlEx(callChatCode, { t:'v_keep' }, { ephemeral:true, raw:true, timeout:8000 });
+      callSendMuteState();
+    }, CALL_HEARTBEAT_MS);
+
+    clearInterval(callRxWatch);
+    callRxWatch = setInterval(() => {
+      if (!callActive || !callConnected) return;
+      const idle = Date.now() - callRxLastPacketAt;
+      if (idle > CALL_SILENCE_TIMEOUT_MS && idle <= CALL_SILENCE_TIMEOUT_MS * 2){
+        const st = $('callStateText');
+        if (st) st.textContent = 'Connection looks quiet…';
+      } else if (idle > CALL_SILENCE_TIMEOUT_MS * 2){
+        toast('Call ended: nothing arrived from the other side');
+        terminateCall(true, 'ended');
       }
-      updateCallDataUI();
-    } else {
-      playCallAudio(bytes);
-      callStats.recvBytes += bytes.length;
-      callStats.recvChunks++;
-      logCallData('in', '↓ ' + humanSize(bytes.length));
-      updateCallDataUI();
+    }, 5000);
+  }
+
+  async function callMarkConnected(){
+    if (!callActive || callConnected) return;
+    callConnected = true;
+    callStats.startedAt = Date.now();
+    callRxExpected = 1;
+    callRxBuffer.clear();
+    callRxPlayHead = 0;
+    callRxPrefilled = false;
+    callRxLastPacketAt = Date.now();
+    stopRingtone();
+    clearTimeout(callTimeout); callTimeout = null;
+    prepareCallUI(false);
+    const acc = $('callAcceptBtn'); if (acc) acc.style.display = 'none';
+    $('callStateText').textContent = callPasscode ? 'Connected · encrypted' : 'Connected';
+    $('callTimerDisplay').style.display = 'block';
+    updateCallMessage({ status:'connected', encrypted: !!callPasscode });
+    startCallTimer();
+    startCallWatchdogs();
+    updateCallDataUI();
+    logCallData('note', 'connected · audio flows over ntfy');
+    callSendMuteState();
+    try {
+      await startCallCapture();
+    } catch(err){
+      callError(micErrorText(err));
+      toast('Microphone problem — you can listen but not talk. ' + micErrorText(err), 6000);
     }
   }
 
-  async function receiveVoiceChunk(chat, from, dataStr, isEncrypted){
-    if (!callActive){
-      handleIncomingCallOffer(chat, from, { pass: isEncrypted });
+  /* ---------- outgoing call ---------- */
+  async function initiateCall(){
+    if (callActive){ toast('You are already in a call'); return; }
+    if (mediaRecorder && mediaRecorder.state === 'recording'){ toast('Finish the voice note first'); return; }
+    const chat = activeChat();
+    if (!chat){ toast('Open a conversation first'); return; }
+    if (chat.group){ toast('Calls work in one to one chats only'); return; }
+    if (!getAudioCtx()){ toast('Voice calls are not supported on this browser'); return; }
+    if (!secureOriginOk()){ toast(micBlockedReason(), 6000); return; }
+
+    unlockAudio();
+    try { await acquireMic(); }
+    catch(err){ toast(micErrorText(err), 6000); return; }
+
+    let pass = null;
+    if (lockArmed && vaultAvailable()){
+      pass = await askPasscode({ title:'Encrypted call', desc:'Enter a passcode. The other phone must type the same one.', ok:'Start call' });
+      if (pass === null){ releaseMic(); return; }
+    }
+
+    callCid = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    callChatCode = chat.code;
+    callDirection = 'out';
+    callIncomingEncrypted = false;
+    callPasscode = pass || null;
+    callActive = true;
+    callConnected = false;
+    callSeconds = 0;
+    callStats = freshCallStats();
+    callTxSeq = 0; callTxAcc = []; callTxAccBytes = 0; callTxQueue = [];
+    callTxPacketMs = CALL_PACKET_MS_DEFAULT; callTxBackoff = 0; callTxSending = false; callTxLastRtt = 0;
+    callRxExpected = 1; callRxBuffer.clear(); callRxPlayHead = 0; callRxPrefilled = false;
+    callRxLastPacketAt = Date.now();
+    callMicMuted = false; callRemoteMuted = false; callPeerMuted = false;
+    callMsg = null;
+    const muteBtn = $('expMuteBtn'); if (muteBtn) muteBtn.classList.remove('active');
+    const spkBtn = $('expSpeakerBtn'); if (spkBtn) spkBtn.classList.remove('active');
+
+    let offerKey = null;
+    callKey = null; callKeyKind = 'none';
+    if (pass && vaultAvailable()){
+      try { callKey = await callDeriveKey(pass, callCid); callKeyKind = 'pass'; } catch(_){}
+    } else if (window.crypto && crypto.subtle){
+      try {
+        const raw = crypto.getRandomValues(new Uint8Array(32));
+        callKey = await crypto.subtle.importKey('raw', raw, { name:'AES-GCM' }, true, ['encrypt','decrypt']);
+        offerKey = bufToB64(raw);
+        callKeyKind = 'session';
+      } catch(_){ callKey = null; callKeyKind = 'none'; }
+    }
+
+    resetCallDataUI();
+    prepareCallUI(true);
+    $('callScreen').classList.add('show');
+    $('callPeerName').textContent = chat.title || chat.code;
+    $('callAvatar').textContent = avatarText(chat.title || chat.code);
+    $('callStateText').textContent = callPasscode ? 'Calling… encrypted' : (state.ring === false ? 'Calling… silent' : 'Calling… ringing');
+    $('callAcceptBtn').style.display = 'none';
+    $('callTimerDisplay').style.display = 'none';
+    updateCallTimerUI();
+    addCallMessage('out');
+    updateCallDataUI();
+
+    playRingtone();
+    logCallData('out', '↑ offer sent over ntfy');
+    const r = await sendControlEx(chat.code,
+      { t:'v_offer', v:2, cid:callCid, pass: !!callPasscode, k: offerKey, nm: state.name },
+      { ephemeral:true, raw:true, timeout:15000 });
+
+    if (!r.id){
+      callError(r.error || 'could not send the call offer');
+      toast('Could not reach the other side');
+      terminateCall(false, 'failed');
       return;
     }
-    if (!dataStr || !callConnected) return;
-    try {
-      let rawBytes;
-      if (isEncrypted){
-        if (!callPasscode && vaultAvailable()){
-          const pass = await askPasscode({ title:'Incoming Encrypted Voice', desc:'Enter passcode to listen.', ok:'Unlock Audio' });
-          if (!pass) return;
-          callPasscode = pass;
-          updateCallDataUI();
-        }
-        if (!callPasscode) return;
-        const parts = dataStr.split('.');
-        const ctBuf = b64ToBytes(parts[2]).buffer;
-        const ptBuf = await vaultDecryptBytes(callPasscode, parts[0], parts[1], ctBuf);
-        rawBytes = new Uint8Array(ptBuf);
-      } else {
-        rawBytes = b64ToBytes(dataStr);
+    logCallData('out', '↑ offer accepted by ntfy');
+    clearTimeout(callTimeout);
+    callTimeout = setTimeout(() => {
+      if (callActive && !callConnected){
+        toast('No answer');
+        terminateCall(true, 'missed');
       }
-      const blob = new Blob([rawBytes], { type: 'audio/webm' });
-      enqueueLegacyCallAudio(URL.createObjectURL(blob));
-      callStats.recvBytes += rawBytes.length;
-      callStats.recvChunks++;
-      logCallData('in', '↓ legacy chunk · ' + humanSize(rawBytes.length));
-      updateCallDataUI();
-    } catch(err){
-      callError('legacy voice chunk failed');
-    }
+    }, CALL_RING_TIMEOUT_MS);
   }
 
-  function enqueueLegacyCallAudio(url){
-    callLegacyAudioQueue.push(url);
-    if (callLegacyPlaying) return;
-    const next = () => {
-      const src = callLegacyAudioQueue.shift();
-      if (!src){ callLegacyPlaying = false; return; }
-      callLegacyPlaying = true;
-      const audio = new Audio(src);
-      const done = () => { try { URL.revokeObjectURL(src); } catch(_){} next(); };
-      audio.onended = done;
-      audio.onerror = done;
-      audio.play().catch(done);
-    };
-    next();
+  /* ---------- incoming call ---------- */
+  async function handleIncomingCallOffer(chat, from, opts){
+    if (from === state.name) return;
+    if (callActive){
+      if (callChatCode === chat.code && callDirection === 'in' && !callConnected) return;
+      sendControl(chat.code, { t:'v_reject', busy:1 }, true);
+      return;
+    }
+    if (mediaRecorder && mediaRecorder.state === 'recording'){ /* a call wins, recording stops */ stopRecording(false); }
+
+    callCid = (opts && opts.cid) || ('c' + Date.now().toString(36));
+    callChatCode = chat.code;
+    callDirection = 'in';
+    callIncomingEncrypted = !!(opts && opts.pass);
+    callPasscode = null;
+    callKey = null; callKeyKind = 'none';
+    if (!callIncomingEncrypted && opts && opts.k && window.crypto && crypto.subtle){
+      try { callKey = await callImportRawKey(opts.k); callKeyKind = 'session'; } catch(_){ callKey = null; callKeyKind = 'none'; }
+    }
+    callActive = true;
+    callConnected = false;
+    callSeconds = 0;
+    callStats = freshCallStats();
+    callTxSeq = 0; callTxAcc = []; callTxAccBytes = 0; callTxQueue = [];
+    callTxPacketMs = CALL_PACKET_MS_DEFAULT; callTxBackoff = 0; callTxSending = false;
+    callRxExpected = 1; callRxBuffer.clear(); callRxPlayHead = 0; callRxPrefilled = false;
+    callRxLastPacketAt = Date.now();
+    callMicMuted = false; callRemoteMuted = false; callPeerMuted = false;
+    callMsg = null;
+    const muteBtn = $('expMuteBtn'); if (muteBtn) muteBtn.classList.remove('active');
+    const spkBtn = $('expSpeakerBtn'); if (spkBtn) spkBtn.classList.remove('active');
+
+    // Bring the ringing chat into focus so the call screen is not hidden behind another chat.
+    if (state.activeCode !== chat.code){
+      state.activeCode = chat.code;
+      renderChatList();
+      renderMessages();
+    }
+
+    resetCallDataUI();
+    prepareCallUI(true);
+    $('callScreen').classList.add('show');
+    $('callPeerName').textContent = chat.title || chat.code;
+    $('callAvatar').textContent = avatarText(chat.title || chat.code);
+    $('callStateText').textContent = 'Incoming ' + (callIncomingEncrypted ? 'encrypted ' : '') + 'call from ' + from;
+    $('callAcceptBtn').style.display = 'flex';
+    $('callTimerDisplay').style.display = 'none';
+    updateCallTimerUI();
+    addCallMessage('in');
+    updateCallDataUI();
+    logCallData('in', '↓ offer received from ' + from);
+    playRingtone();
+    notifyUser('Incoming call', ((opts && opts.nm) ? opts.nm : from) + ' is calling');
+
+    clearTimeout(callTimeout);
+    callTimeout = setTimeout(() => {
+      if (callActive && !callConnected){
+        toast('Missed call from ' + from);
+        terminateCall(false, 'missed');
+      }
+    }, CALL_RING_TIMEOUT_MS);
+  }
+
+  async function acceptCall(){
+    if (!callActive || callConnected || callDirection !== 'in') return;
+    unlockAudio();
+    try { await acquireMic(); }
+    catch(err){
+      toast(micErrorText(err), 6000);
+      const chat0 = state.chats.find(c => c.code === callChatCode) || activeChat();
+      if (chat0) sendControl(chat0.code, { t:'v_reject' }, true);
+      terminateCall(false, 'declined');
+      return;
+    }
+    const chat = state.chats.find(c => c.code === callChatCode) || activeChat();
+    if (!chat){ terminateCall(false, 'declined'); return; }
+
+    if (callIncomingEncrypted){
+      if (!vaultAvailable()){
+        toast('Encrypted calls need an https page');
+        sendControl(chat.code, { t:'v_reject' }, true);
+        terminateCall(false, 'declined');
+        return;
+      }
+      const pass = await askPasscode({ title:'Encrypted call', desc:'Enter the passcode the caller used.', ok:'Join call' });
+      if (pass === null){
+        sendControl(chat.code, { t:'v_reject' }, true);
+        terminateCall(false, 'declined');
+        return;
+      }
+      callPasscode = pass;
+      try { callKey = await callDeriveKey(pass, callCid || 'call'); callKeyKind = 'pass'; }
+      catch(_){ callKey = null; callKeyKind = 'none'; }
+    }
+
+    await sendControl(chat.code, { t:'v_accept' }, true);
+    await callMarkConnected();
+  }
+
+  async function handleCallAccepted(chat, from){
+    if (!callActive || callConnected || callDirection !== 'out') return;
+    if (callChatCode && chat.code !== callChatCode) return;
+    logCallData('in', '↓ call accepted');
+    await callMarkConnected();
+  }
+
+  function handleCallRejected(chat, from, c){
+    if (!callActive) return;
+    if (callConnected){ handleCallEndSignal(chat, from); return; }
+    toast((c && c.busy) ? 'The other side is in a call' : ((from || 'The other side') + ' declined the call'));
+    logCallData('err', '! call declined');
+    terminateCall(false, 'declined');
   }
 
   function handleCallEndSignal(chat, from){
@@ -3416,44 +3944,53 @@
     terminateCall(false, callConnected ? 'ended' : (callDirection === 'in' ? 'missed' : 'cancelled'));
   }
 
-  function terminateCall(sendSignal = true, status){
-    const chat = state.chats.find(c => c.code === callChatCode) || activeChat();
+  function terminateCall(sendSignal, status){
     const wasActive = callActive;
     const wasConnected = callConnected;
-    if (sendSignal && chat && wasActive){
-      sendControl(chat.code, { t: wasConnected ? 'v_end' : 'v_reject' }, true);
+    const chatCode = callChatCode;
+
+    if (sendSignal !== false && wasActive && chatCode){
+      const payload = wasConnected ? { t:'v_end' } : { t:'v_reject' };
+      sendControl(chatCode, payload, true);
     }
-    if (callMsg){
+
+    stopRingtone();
+    stopCallCapture();
+    clearInterval(callTimerInterval); callTimerInterval = null;
+    clearInterval(callHeartbeat); callHeartbeat = null;
+    clearInterval(callRxWatch); callRxWatch = null;
+    clearTimeout(callRxGapTimer); callRxGapTimer = null;
+    clearTimeout(callTimeout); callTimeout = null;
+    if (callRxGain){ try { callRxGain.disconnect(); } catch(_){} callRxGain = null; }
+    if (callSinkGain){ try { callSinkGain.disconnect(); } catch(_){} callSinkGain = null; }
+
+    if (wasActive){
       finalizeCallMessage(status || (wasConnected ? 'ended' : (callDirection === 'in' ? 'missed' : 'cancelled')));
     }
 
     callActive = false;
     callConnected = false;
-    clearTimeout(callTimeout); callTimeout = null;
-    stopRingtone();
-    stopCallCapture();
-    callTxQueue = [];
-    callTxPumping = false;
-    callTxSeq = 0;
-    callRxExpected = null;
-    callRxBuffer.clear();
-    callPlayHead = 0;
-    clearInterval(callTimerInterval);
-    callTimerInterval = null;
     callSeconds = 0;
-    callLegacyAudioQueue = [];
-    callLegacyPlaying = false;
-    callChatCode = null;
-    callPasscode = null;
-    callIncomingEncrypted = false;
     callDirection = 'out';
+    callChatCode = null;
+    callCid = null;
+    callPasscode = null;
+    callKey = null; callKeyKind = 'none';
+    callIncomingEncrypted = false;
     callMsg = null;
     callStats = freshCallStats();
+    callTxQueue = []; callTxAcc = []; callTxAccBytes = 0; callTxSeq = 0;
+    callTxSending = false; callTxBackoff = 0; callTxLastRtt = 0; callTxPacketMs = CALL_PACKET_MS_DEFAULT;
+    callRxExpected = null; callRxBuffer.clear();
+    callRxPlayHead = 0; callRxPrefilled = false; callRxLastPacketAt = 0;
+    callMicMuted = false; callRemoteMuted = false; callPeerMuted = false;
 
-    $('callScreen').classList.remove('show', 'exp-call-ui', 'ringing');
-    $('callAcceptBtn').style.display = 'none';
-    $('callTimerDisplay').style.display = 'none';
-    $('remoteAudio').srcObject = null;
+    const cs = $('callScreen');
+    if (cs) cs.classList.remove('show', 'exp-call-ui', 'ringing');
+    const acc = $('callAcceptBtn'); if (acc) acc.style.display = 'none';
+    const tm = $('callTimerDisplay'); if (tm) tm.style.display = 'none';
+    const muteBtn = $('expMuteBtn'); if (muteBtn) muteBtn.classList.remove('active');
+    const spkBtn = $('expSpeakerBtn'); if (spkBtn) spkBtn.classList.remove('active');
     updateCallDataUI();
   }
 
@@ -3488,16 +4025,15 @@
   $('callAcceptBtn').addEventListener('click', acceptCall);
   $('callEndBtn').addEventListener('click', () => terminateCall(true));
 
-  // Experimental Grid UI button toggles
-  $('expMuteBtn').addEventListener('click', function(){
+  // In-call controls — they drive the ntfy audio engine directly (no WebRTC objects here)
+  $('expMuteBtn').addEventListener('click', callToggleMute);
+  $('expKeypadBtn').addEventListener('click', function(){
     this.classList.toggle('active');
-    const muted = this.classList.contains('active');
-    const track = rtcLocal && rtcLocal.getAudioTracks()[0];
-    if (track) track.enabled = !muted;
-    if (callActive) logCallData('note', muted ? 'mic muted' : 'mic unmuted');
+    playDtmfTone(941, 1336);
   });
-  $('expKeypadBtn').addEventListener('click', function(){ this.classList.toggle('active'); });
-  $('expSpeakerBtn').addEventListener('click', function(){ this.classList.toggle('active'); });
+  $('expSpeakerBtn').addEventListener('click', callToggleRemote);
+  const callDataToggleBtn = $('callDataToggle');
+  if (callDataToggleBtn) callDataToggleBtn.addEventListener('click', () => $('callDataDetails').classList.toggle('show'));
 
   // Header & Modals
   $('settingsBtn').addEventListener('click', () => openModal('settingsModal'));
@@ -3544,6 +4080,13 @@
     localStorage.setItem('ntfy_theme', $('themeToggle').checked ? 'dark' : 'light');
   });
   $('soundToggle').addEventListener('change', () => { state.sound = $('soundToggle').checked; localStorage.setItem('ntfy_sound', state.sound ? '1' : '0'); });
+  $('ringToggle').checked = state.ring;
+  $('ringToggle').addEventListener('change', () => {
+    state.ring = $('ringToggle').checked;
+    localStorage.setItem('ntfy_ring', state.ring ? '1' : '0');
+    if (!state.ring) stopRingtone();
+    toast(state.ring ? 'Calls will ring' : 'Calls are silent from now on');
+  });
   $('uiEmojiToggle').checked = state.showUiEmoji;
   $('uiEmojiToggle').addEventListener('change', () => { state.showUiEmoji = $('uiEmojiToggle').checked; localStorage.setItem('ntfy_ui_emoji', state.showUiEmoji ? '1' : '0'); document.body.classList.toggle('show-ui-emoji', state.showUiEmoji); });
 
@@ -3774,6 +4317,7 @@
   buildSwatches();
   $('themeToggle').checked = document.body.classList.contains('dark');
   $('soundToggle').checked = state.sound;
+  $('ringToggle').checked = state.ring;
   $('nameInput').value = state.name;
   $('joinName').value = state.name === 'Me' ? '' : state.name;
   $('joinOwnCode').textContent = ownCode();
@@ -3826,306 +4370,6 @@
   });
 
   subscribeAll();
-/* ===== ntfy encrypted audio call engine ===== */
-const NA_BPS = 10000, NA_CHUNK = 1200, NA_MAX_PAYLOAD = 3700;
-let ntCid = null, ntKey = null, ntMime = '', ntOffer = null, ntRec = null, ntStream = null;
-let ntSeq = 0, ntRxSeq = 0, ntQueue = [], ntPlaying = false, ntCurAudio = null;
-let ntTimeout = null, ntSendBusy = false, ntFramesOk = 0, ntFramesBad = 0;
-
-async function ntNewKey(){
-  const raw = crypto.getRandomValues(new Uint8Array(32));
-  const key = await crypto.subtle.importKey('raw', raw, { name:'AES-GCM' }, true, ['encrypt','decrypt']);
-  return { raw, key };
-}
-async function ntImportKey(b64){
-  const key = await crypto.subtle.importKey('raw', b64ToBytes(b64), { name:'AES-GCM' }, false, ['encrypt','decrypt']);
-  return key;
-}
-async function ntPassKey(pass, cid){
-  const data = new TextEncoder().encode('call|' + cid + '|' + pass);
-  const digest = await crypto.subtle.digest('SHA-256', data);
-  return crypto.subtle.importKey('raw', digest, { name:'AES-GCM' }, false, ['encrypt','decrypt']);
-}
-async function ntEncrypt(key, bytes){
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, bytes);
-  return bufToB64(iv) + '.' + bufToB64(new Uint8Array(ct));
-}
-async function ntDecrypt(key, payload){
-  const parts = String(payload).split('.');
-  const iv = b64ToBytes(parts[0]), ct = b64ToBytes(parts[1]);
-  const pt = await crypto.subtle.decrypt({ name:'AES-GCM', iv }, key, ct);
-  return new Uint8Array(pt);
-}
-function ntPickMime(){
-  const list = ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/mp4'];
-  for (let i = 0; i < list.length; i++){
-    try { if (window.MediaRecorder && MediaRecorder.isTypeSupported(list[i])) return list[i]; } catch(_){}
-  }
-  return '';
-}
-async function ntSend(obj){
-  if (!callChatCode) return { error:'no chat' };
-  const r = await sendControlEx(callChatCode, obj, { ephemeral:true, raw:true, timeout:9000 });
-  if (r && r.error){ callStats.errors = (callStats.errors || 0) + 1; logCallData('err', r.error); }
-  return r || { error:'no response' };
-}
-
-function ntEnqueue(url){
-  ntQueue.push(url);
-  while (ntQueue.length > 8){ const old = ntQueue.shift(); try { URL.revokeObjectURL(old); } catch(_){} callStats.errors++; }
-  ntPump();
-}
-function ntPump(){
-  if (ntPlaying || !ntQueue.length) return;
-  ntPlaying = true;
-  const url = ntQueue.shift();
-  let a;
-  try { a = new Audio(url); } catch(_){ ntPlaying = false; return; }
-  ntCurAudio = a;
-  a.onended = function(){ try { URL.revokeObjectURL(url); } catch(_){} ntPlaying = false; ntPump(); };
-  a.onerror = function(){ try { URL.revokeObjectURL(url); } catch(_){} callStats.errors++; ntPlaying = false; ntPump(); };
-  const p = a.play();
-  if (p && p.catch) p.catch(function(){ try { URL.revokeObjectURL(url); } catch(_){} ntPlaying = false; ntPump(); });
-}
-function ntStopPlayback(){
-  ntQueue.forEach(function(u){ try { URL.revokeObjectURL(u); } catch(_){} });
-  ntQueue = [];
-  if (ntCurAudio){ try { ntCurAudio.pause(); } catch(_){} ntCurAudio = null; }
-  ntPlaying = false;
-}
-function ntMarkConnected(){
-  if (callConnected) return;
-  callConnected = true;
-  callStats.startedAt = Date.now();
-  stopRingtone();
-  const st = $('callStateText'); if (st) st.textContent = 'In call';
-  const tm = $('callTimerDisplay'); if (tm) tm.style.display = 'block';
-  startCallTimer();
-  if (typeof updateCallMessage === 'function') updateCallMessage({ status:'connected' });
-  logCallData('note', 'audio flowing over ntfy');
-  const tr = document.querySelector('#callDataDetails .cdp-row b'); if (tr) tr.textContent = 'ntfy.sh · encrypted frames';
-  const co = $('callCodecInfo'); if (co) co.textContent = 'Opus · ' + Math.round(NA_BPS/1000) + ' kbps';
-  const en = $('callEncInfo'); if (en) en.textContent = callPasscode ? 'AES-GCM (passcode)' : 'AES-GCM (session key)';
-  updateCallDataUI();
-}
-
-async function ntSendFrame(blob){
-  if (!ntKey || !callActive) return;
-  try {
-    const buf = await blob.arrayBuffer();
-    const d = await ntEncrypt(ntKey, new Uint8Array(buf));
-    const obj = { t:'a_frame', cid:ntCid, s:++ntSeq, m:ntMime, d:d };
-    if (JSON.stringify(obj).length > NA_MAX_PAYLOAD){ callStats.errors++; logCallData('err','frame too large, dropped'); return; }
-    const r = await ntSend(obj);
-    if (r && r.error){ logCallData('err','send failed'); return; }
-    callStats.sentBytes += buf.byteLength; callStats.sentChunks++;
-    updateCallDataUI();
-  } catch(err){ callStats.errors++; }
-}
-async function ntOnFrame(chat, from, c){
-  if (!callActive || !c || c.cid !== ntCid || !ntKey) return;
-  if (c.s && ntRxSeq && c.s <= ntRxSeq) return;
-  if (c.s) ntRxSeq = c.s;
-  try {
-    const bytes = await ntDecrypt(ntKey, c.d);
-    callStats.recvBytes += bytes.length; callStats.recvChunks++;
-    const blob = new Blob([bytes], { type: c.m || ntMime || 'audio/webm' });
-    ntEnqueue(URL.createObjectURL(blob));
-    if (!callConnected) ntMarkConnected();
-    updateCallDataUI();
-  } catch(err){ callStats.errors++; }
-}
-async function ntStartCapture(){
-  if (ntRec) return true;
-  try { ntStream = await acquireMic(); } catch(err){ toast(micErrorText(err), 6000); return false; }
-  try {
-    const opts = { audioBitsPerSecond: NA_BPS };
-    if (ntMime) opts.mimeType = ntMime;
-    ntRec = new MediaRecorder(ntStream, opts);
-  } catch(_){
-    try { ntRec = new MediaRecorder(ntStream); ntMime = ntRec.mimeType || ntMime; } catch(__){ toast('Recording is not supported here'); return false; }
-  }
-  ntRec.ondataavailable = function(e){ if (e.data && e.data.size) ntSendFrame(e.data); };
-  ntRec.onerror = function(){ callStats.errors++; logCallData('err','recorder error'); };
-  try { ntRec.start(NA_CHUNK); } catch(err){ toast('Could not start the microphone'); return false; }
-  logCallData('note','capture started');
-  return true;
-}
-function ntStopCapture(){
-  try { if (ntRec && ntRec.state !== 'inactive') ntRec.stop(); } catch(_){}
-  ntRec = null;
-  if (ntStream){ try { ntStream.getTracks().forEach(function(t){ t.stop(); }); } catch(_){} }
-  ntStream = null;
-  try { releaseMic(); } catch(_){}
-}
-function startCallTimer(){
-  clearInterval(callTimerInterval);
-  callSeconds = 0;
-  updateCallTimerUI();
-  callTimerInterval = setInterval(function(){
-    callSeconds++;
-    updateCallTimerUI();
-    if (callSeconds >= 300){ terminateCall(true, 'completed'); }
-  }, 1000);
-}
-function updateCallTimerUI(){
-  const left = Math.max(0, 300 - callSeconds);
-  const m = String(Math.floor(left / 60)).padStart(2, '0');
-  const s = String(left % 60).padStart(2, '0');
-  const el = $('callTimerDisplay');
-  if (el) el.textContent = m + ':' + s + ' left';
-}
-
-
-async function initiateCall(){
-  if (callActive){ toast('You are already in a call'); return; }
-  if (mediaRecorder && mediaRecorder.state === 'recording'){ toast('Finish the voice note first'); return; }
-  const chat = activeChat();
-  if (!chat){ toast('Open a conversation first'); return; }
-  if (chat.group){ toast('Calls work in one to one chats only'); return; }
-  if (!secureOriginOk()){ toast(micBlockedReason(), 6000); return; }
-  if (!window.MediaRecorder){ toast('This browser cannot record audio'); return; }
-  if (!window.crypto || !crypto.subtle){ toast('Encryption is not available here'); return; }
-
-  let pass = null;
-  if (lockArmed && vaultAvailable()){
-    pass = await askPasscode({ title:'Encrypted Call', desc:'Enter a passcode. The other side must enter the same one.', ok:'Start Call' });
-    if (pass === null) return;
-  }
-  if (!(await ntStartCapture())) return;
-
-  ntCid = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-  ntMime = (ntRec && ntRec.mimeType) || ntMime || ntPickMime();
-  let keyInfo = null;
-  if (pass){ ntKey = await ntPassKey(pass, ntCid); }
-  else { keyInfo = await ntNewKey(); ntKey = keyInfo.key; }
-
-  callChatCode = chat.code; callDirection = 'out'; callPasscode = pass || null;
-  callActive = true; callConnected = false; callSeconds = 0; callStats.startedAt = 0;
-  callStats.sentBytes = 0; callStats.recvBytes = 0; callStats.sentChunks = 0; callStats.recvChunks = 0; callStats.errors = 0;
-  resetCallDataUI(); callMsg = null; addCallMessage('out'); updateCallDataUI();
-  prepareCallUI(true);
-  $('callScreen').classList.add('show');
-  $('callPeerName').textContent = chat.title || chat.code;
-  $('callAvatar').textContent = avatarText(chat.title || chat.code);
-  $('callStateText').textContent = 'Calling…';
-  $('callAcceptBtn').style.display = 'none';
-  $('callTimerDisplay').style.display = 'none';
-  playRingtone();
-
-  const r = await ntSend({ t:'a_offer', cid:ntCid, k:keyInfo ? bufToB64(keyInfo.raw) : null, p:pass ? 1 : 0, m:ntMime });
-  if (r && r.error){
-    $('callStateText').textContent = 'Could not reach the other side';
-    toast('Could not reach the other side');
-    terminateCall(false, 'failed');
-    return;
-  }
-  clearTimeout(ntTimeout);
-  ntTimeout = setTimeout(function(){
-    if (callActive && !callConnected){ toast('No answer'); terminateCall(true, 'missed'); }
-  }, 45000);
-}
-
-async function handleCallOfferSignal(chat, from, c){
-  if (callActive){ sendControlEx(chat.code, { t:'a_busy' }, { ephemeral:true, raw:true }); return; }
-  callChatCode = chat.code; callDirection = 'in';
-  callActive = true; callConnected = false; callSeconds = 0;
-  callStats.startedAt = 0; callStats.sentBytes = 0; callStats.recvBytes = 0;
-  callStats.sentChunks = 0; callStats.recvChunks = 0; callStats.errors = 0;
-  ntCid = c.cid; ntMime = c.m || ''; ntOffer = c; ntKey = null; ntSeq = 0; ntRxSeq = 0;
-  callIncomingEncrypted = !!c.p; callPasscode = null;
-  ntStopPlayback(); resetCallDataUI(); callMsg = null; addCallMessage('in'); updateCallDataUI();
-  prepareCallUI(true);
-  $('callScreen').classList.add('show');
-  $('callPeerName').textContent = chat.title || chat.code;
-  $('callAvatar').textContent = avatarText(chat.title || chat.code);
-  $('callStateText').textContent = 'Incoming call from ' + from;
-  $('callAcceptBtn').style.display = 'flex';
-  $('callTimerDisplay').style.display = 'none';
-  playRingtone();
-  clearTimeout(ntTimeout);
-  ntTimeout = setTimeout(function(){
-    if (callActive && !callConnected){ toast('Missed call'); terminateCall(true, 'missed'); }
-  }, 45000);
-}
-
-async function acceptCall(){
-  if (!callActive || callDirection !== 'in' || !ntOffer) return;
-  $('callAcceptBtn').style.display = 'none';
-  let pass = null;
-  if (callIncomingEncrypted){
-    pass = await askPasscode({ title:'Encrypted Call', desc:'Enter the passcode from the caller.', ok:'Answer' });
-    if (pass === null){ terminateCall(true, 'declined'); return; }
-    callPasscode = pass;
-  }
-  try {
-    ntKey = pass ? await ntPassKey(pass, ntCid) : await ntImportKey(ntOffer.k);
-  } catch(_){ toast('This call cannot be unlocked'); terminateCall(true, 'failed'); return; }
-  stopRingtone();
-  $('callStateText').textContent = 'Connecting…';
-  await ntSend({ t:'a_accept', cid:ntCid });
-  if (!(await ntStartCapture())){ terminateCall(true, 'failed'); return; }
-  ntMarkConnected();
-}
-
-async function ntOnAccept(chat, c){
-  if (!callActive || callDirection !== 'out' || c.cid !== ntCid) return;
-  if (!ntRec && !(await ntStartCapture())){ terminateCall(true, 'failed'); return; }
-  stopRingtone();
-  $('callStateText').textContent = 'Connecting…';
-  ntMarkConnected();
-}
-function ntOnReject(chat, c){
-  if (!callActive || c.cid !== ntCid) return;
-  toast('Call declined');
-  terminateCall(false, 'declined');
-}
-function ntOnBusy(chat, c){
-  if (!callActive) return;
-  toast('The other side is in a call');
-  terminateCall(false, 'declined');
-}
-function ntOnEnd(chat, c){
-  if (!callActive || (c.cid && c.cid !== ntCid)) return;
-  terminateCall(false, callConnected ? 'completed' : 'cancelled');
-}
-
-function terminateCall(sendSignal, status){
-  const wasActive = callActive;
-  const wasConnected = callConnected;
-  if (sendSignal !== false && ntCid && callChatCode){
-    const decline = (callDirection === 'in' && !callConnected);
-    sendControlEx(callChatCode, { t: decline ? 'a_reject' : 'a_end', cid:ntCid }, { ephemeral:true, raw:true });
-  }
-  ntStopCapture();
-  ntStopPlayback();
-  clearInterval(callTimerInterval); callTimerInterval = null;
-  clearTimeout(ntTimeout); ntTimeout = null;
-  stopRingtone();
-  callActive = false; callConnected = false; callSeconds = 0;
-  ntKey = null; ntOffer = null; ntSeq = 0; ntRxSeq = 0; ntCid = null;
-  const a = $('remoteAudio'); if (a) a.srcObject = null;
-  const cs = $('callScreen'); if (cs) cs.classList.remove('show', 'exp-call-ui', 'ringing');
-  const ab = $('callAcceptBtn'); if (ab) ab.style.display = 'none';
-  const tm = $('callTimerDisplay'); if (tm) tm.style.display = 'none';
-  if (wasActive){
-    finalizeCallMessage(status || (wasConnected ? 'completed' : 'missed'));
-  }
-  callChatCode = null;
-  updateCallDataUI();
-}
-
-function handleIncomingCallOffer(chat, from){
-  const code = chat && chat.code;
-  if (code) sendControlEx(code, { t:'v_reject' }, { ephemeral:true, raw:true });
-}
-function handleCallAccepted(){}
-function handleCallRejected(){ if (callActive) terminateCall(false, 'declined'); }
-function handleCallEndSignal(){ if (callActive) terminateCall(false, callConnected ? 'completed' : 'cancelled'); }
-function receiveCallAudio(){}
-function receiveVoiceChunk(){}
-
   renderChatList();
   renderMessages();
 </script>
