@@ -829,6 +829,16 @@
     background:rgba(127,127,127,.16);color:inherit;font-size:10.5px;font-weight:700;
     border-radius:999px;padding:3px 9px;margin-left:2px;
   }
+
+  /* ===== In-app dialogs (replace alert / confirm / prompt) ===== */
+  #uiDialog, #passModal{ z-index:40000 }
+  #uiDialog .modal-content{ max-width:420px }
+  #uiDialogDesc{ white-space:pre-line; margin:0 0 16px; color:#70757a; font-size:14px; line-height:1.55 }
+  #uiDialogField{ display:none; margin-bottom:16px }
+  #uiDialog .modal-actions{ display:flex; gap:10px }
+  #uiDialog .modal-actions button{ flex:1 }
+  #uiDialogOk.danger{ background:#dc3545 }
+  .modal-actions .cancel, .modal-actions .confirm{ min-height:42px }
 </style>
 </head>
 <body class="dark">
@@ -1219,6 +1229,19 @@
   </div>
 </div>
 
+<!-- In-app dialog (replaces every native alert/confirm/prompt) -->
+<div class="modal" id="uiDialog">
+  <div class="modal-content">
+    <h3 id="uiDialogTitle">Are you sure?</h3>
+    <p id="uiDialogDesc"></p>
+    <div class="field" id="uiDialogField"><input id="uiDialogInput" autocomplete="off"></div>
+    <div class="modal-actions">
+      <button class="cancel" id="uiDialogCancel">Cancel</button>
+      <button class="confirm" id="uiDialogOk">OK</button>
+    </div>
+  </div>
+</div>
+
 <!-- Help -->
 <div class="help-overlay" id="helpOverlay">
   <div class="help-overlay-content">
@@ -1227,6 +1250,7 @@
     <p><b>Rich messages</b>, photos, voice notes, files and location. Everything is delivered through ntfy.</p>
     <p><b>Vault Lock</b>, encrypt text or a photo on your device with a passcode.</p>
     <p><b>Voice calls</b> run entirely over ntfy: the audio is compressed to 8 kHz µ-law, packed into normal ntfy messages and rebuilt on the other side. No WebRTC, no STUN/TURN, no media server. Settings has a <b>Call ringtone</b> switch to call silently.</p>
+    <p><b>No microphone?</b> Calls still work. Start or answer one and the app offers a <b>listen-only</b> call: you hear the other side, they cannot hear you, and both screens say so.</p>
     <p><b>Big files</b> are split into chunks automatically, so an upload that would trip ntfy's size limit (HTTP 413) carries on in pieces and is stitched back together on the other side.</p>
     <button class="help-overlay-close" id="helpClose">Got it</button>
   </div>
@@ -1594,18 +1618,25 @@
         const ren = el('button', null, 'Rename');
         ren.addEventListener('click', e => {
           e.stopPropagation(); dd.classList.remove('show');
-          const n = prompt('Chat name', c.title || c.code);
-          if (n !== null){ c.title = n.trim() || c.code; saveChats(); renderChatList(); renderMessages(); }
+          uiPrompt('Give this conversation a name. Only you see it on this device.', c.title || c.code,
+            { title:'Rename chat', ok:'Save', placeholder:'Chat name' }).then(n => {
+            if (n === null) return;
+            c.title = n.trim() || c.code;
+            saveChats(); renderChatList(); renderMessages();
+          });
         });
         const del = el('button', 'delete-opt', 'Delete');
         del.addEventListener('click', e => {
           e.stopPropagation(); dd.classList.remove('show');
-          if (!confirm('Delete this chat?')) return;
-          state.chats = state.chats.filter(x => x.code !== c.code);
-          const next = (state.chats[0] || {}).code || null;
-          if (state.activeCode === c.code) state.activeCode = next;
-          saveChats();
-          if (next) openChat(next); else { renderChatList(); renderMessages(); }
+          uiConfirm('The conversation is removed from this device. Messages already delivered to ntfy.sh are not deleted.',
+            { title:'Delete this chat?', ok:'Delete', danger:true }).then(ok => {
+            if (!ok) return;
+            state.chats = state.chats.filter(x => x.code !== c.code);
+            const next = (state.chats[0] || {}).code || null;
+            if (state.activeCode === c.code) state.activeCode = next;
+            saveChats();
+            if (next) openChat(next); else { renderChatList(); renderMessages(); }
+          });
         });
         dd.appendChild(ren); dd.appendChild(del);
       }
@@ -2322,17 +2353,21 @@
   }
   function cancelReply(){ replyTarget = null; $('replyPreview').classList.remove('show'); }
   function togglePin(m){ m.pinned = !m.pinned; saveChats(); rerender(); toast(m.pinned ? 'Pinned' : 'Unpinned'); }
-  function startEdit(m){
+  async function startEdit(m){
     const cur = m.text || '';
-    const v = prompt('Edit message', cur);
+    const v = await uiPrompt('Editing changes the message for everyone in this chat.', cur,
+      { title:'Edit message', ok:'Save changes' });
     if (v === null) return;
-    const text = v.trim();
+    const text = String(v).trim();
     if (!text || text === cur) return;
     m.text = text; m.edited = true; saveChats(); rerender();
     if (m.eventId) sendControl(null, { t:'e', id:m.eventId, m:text });
   }
-  function confirmDelete(m){
-    if (!confirm(m.mine && m.eventId ? 'Delete for everyone?' : 'Delete this message?')) return;
+  async function confirmDelete(m){
+    const ok = await uiConfirm(
+      m.mine && m.eventId ? 'This removes it from every device that can read this chat.' : 'This removes it from this device only.',
+      { title: m.mine && m.eventId ? 'Delete for everyone?' : 'Delete this message?', ok:'Delete', danger:true });
+    if (!ok) return;
     const chat = activeChat(); if (!chat) return;
     chat.messages = chat.messages.filter(x => x.id !== m.id);
     if (m.mine && m.eventId) sendControl(null, { t:'d', id:m.eventId });
@@ -2717,7 +2752,11 @@
   async function startRecording(){
     if (callActive){ toast('Finish the call before recording a voice note'); return; }
     if (mediaRecorder && mediaRecorder.state === 'recording') return;
-    if (!navigator.mediaDevices || !window.MediaRecorder){ toast(micBlockedReason(), 5000); return; }
+    if (!navigator.mediaDevices || !window.MediaRecorder){
+      uiAlert(micBlockedReason() + '\n\nYou can still read messages, listen to voice notes and join calls listen only.',
+        { title:'Voice notes need a microphone' });
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true } });
       const preferred = ['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg'];
@@ -2749,7 +2788,10 @@
       if (cancel) cancel.classList.add('show');
       updateComposerHint();
       recTimer = setInterval(() => { $('recTime').textContent = recClock(Date.now() - recStart); }, 250);
-    } catch(err){ toast(micErrorText(err), 5000); }
+    } catch(err){
+      uiAlert(micErrorText(err) + '\n\nVoice notes cannot be recorded without a microphone, but you can still make and answer calls listen only.',
+        { title:'No microphone' });
+    }
   }
   function stopRecording(send){
     recSend = send;
@@ -2795,6 +2837,49 @@
       m.locked = false; delete m.cipher;
       saveChats(); rerender(); toast('Unlocked');
     } catch(err){ toast('Wrong passcode'); }
+  }
+
+  /* ---------- in-app dialog: alert / confirm / prompt without window.* ---------- */
+  let uiDialogResolve = null, uiDialogMode = 'confirm';
+  function uiDialogOpen(opts){
+    return new Promise(resolve => {
+      if (uiDialogResolve){ const prev = uiDialogResolve; uiDialogResolve = null; try { prev(uiDialogMode === 'prompt' ? null : false); } catch(_){} }
+      uiDialogResolve = resolve;
+      uiDialogMode = opts.mode || 'confirm';
+      $('uiDialogTitle').textContent = opts.title || 'Are you sure?';
+      const desc = $('uiDialogDesc');
+      desc.textContent = opts.desc || '';
+      desc.style.display = opts.desc ? 'block' : 'none';
+      $('uiDialogField').style.display = uiDialogMode === 'prompt' ? 'flex' : 'none';
+      $('uiDialogInput').value = opts.value || '';
+      $('uiDialogInput').placeholder = opts.placeholder || '';
+      const okBtn = $('uiDialogOk');
+      okBtn.textContent = opts.ok || 'OK';
+      okBtn.classList.toggle('danger', !!opts.danger);
+      const cancelBtn = $('uiDialogCancel');
+      cancelBtn.style.display = uiDialogMode === 'alert' ? 'none' : 'inline-block';
+      cancelBtn.textContent = opts.cancel || 'Cancel';
+      openModal('uiDialog');
+      if (uiDialogMode === 'prompt') setTimeout(() => { try { $('uiDialogInput').focus(); $('uiDialogInput').select(); } catch(_){} }, 80);
+    });
+  }
+  function uiDialogClose(value){
+    closeModal('uiDialog');
+    const done = uiDialogResolve;
+    uiDialogResolve = null;
+    if (done){ try { done(value); } catch(_){} }
+  }
+  function uiAlert(desc, opts){
+    opts = opts || {};
+    return uiDialogOpen(Object.assign({}, opts, { mode:'alert', desc, ok: opts.ok || 'Got it' })).then(() => true);
+  }
+  function uiConfirm(desc, opts){
+    opts = opts || {};
+    return uiDialogOpen(Object.assign({}, opts, { mode:'confirm', desc })).then(v => v === true);
+  }
+  function uiPrompt(desc, value, opts){
+    opts = opts || {};
+    return uiDialogOpen(Object.assign({}, opts, { mode:'prompt', desc, value })).then(v => v === null || v === false ? null : String(v));
   }
 
   let passResolve = null;
@@ -3113,7 +3198,7 @@
   let callKey = null, callKeyKind = 'none';
   let callTimerInterval = null, callSeconds = 0, callTimeout = null;
   let callStats = freshCallStats();
-  let callMicMuted = false, callRemoteMuted = false;
+  let callMicMuted = false, callRemoteMuted = false, callListenOnly = false;
   let callTxAcc = [], callTxAccBytes = 0, callTxQueue = [], callTxSeq = 0;
   let callTxSending = false, callTxPacketMs = CALL_PACKET_MS_DEFAULT;
   let callTxBackoff = 0, callTxLastRtt = 0, callTxBusyNote = 0;
@@ -3635,6 +3720,11 @@
 
   /* ---------- in-call controls ---------- */
   function callToggleMute(){
+    if (callListenOnly){
+      uiAlert('This call is listen only because no microphone is available, so there is nothing to mute. ' +
+        'You can still hear the other side normally.', { title:'No microphone on this call' });
+      return;
+    }
     callMicMuted = !callMicMuted;
     const btn = $('expMuteBtn');
     if (btn) btn.classList.toggle('active', callMicMuted);
@@ -3655,13 +3745,18 @@
   function handleCallMute(chat, from, c){
     if (!callActive || from === state.name) return;
     callPeerMuted = !!(c && c.on);
-    logCallData('note', callPeerMuted ? 'the other side muted their microphone' : 'the other side unmuted');
-    if (callConnected) $('callStateText').textContent = callPeerMuted ? 'Connected · they are muted' : 'Connected';
+    const noMic = !!(c && c.nom);
+    logCallData('note', noMic ? 'the other side has no microphone (listen only)'
+      : callPeerMuted ? 'the other side muted their microphone' : 'the other side unmuted');
+    if (!callConnected) return;
+    $('callStateText').textContent = noMic ? 'Connected · they have no microphone'
+      : callPeerMuted ? 'Connected · they are muted' : 'Connected';
   }
 
   async function callSendMuteState(){
     if (!callActive || !callConnected) return;
-    await sendControl(callChatCode, { t:'v_mute', on: callMicMuted ? 1 : 0 }, true);
+    await sendControl(callChatCode,
+      { t:'v_mute', on: callMicMuted ? 1 : 0, nom: callListenOnly ? 1 : 0 }, true);
   }
 
   /* ---------- call timer + watchdogs ---------- */
@@ -3723,7 +3818,9 @@
     clearTimeout(callTimeout); callTimeout = null;
     prepareCallUI(false);
     const acc = $('callAcceptBtn'); if (acc) acc.style.display = 'none';
-    $('callStateText').textContent = callPasscode ? 'Connected · encrypted' : 'Connected';
+    $('callStateText').textContent = callListenOnly
+      ? 'Connected · listen only'
+      : (callPasscode ? 'Connected · encrypted' : 'Connected');
     $('callTimerDisplay').style.display = 'block';
     updateCallMessage({ status:'connected', encrypted: !!callPasscode });
     startCallTimer();
@@ -3731,11 +3828,22 @@
     updateCallDataUI();
     logCallData('note', 'connected · audio flows over ntfy');
     callSendMuteState();
+    if (callListenOnly){
+      logCallData('note', 'listen-only call · no microphone in use');
+      toast('Listen only: they cannot hear you', 4000);
+      return;
+    }
     try {
       await startCallCapture();
     } catch(err){
+      callListenOnly = true;
+      callMicMuted = true;
       callError(micErrorText(err));
-      toast('Microphone problem — you can listen but not talk. ' + micErrorText(err), 6000);
+      logCallData('err', 'microphone failed — switched to listen only');
+      $('callStateText').textContent = 'Connected · listen only';
+      callSendMuteState();
+      uiAlert(micErrorText(err) + '\n\nThe call stays connected: you can hear them, but they cannot hear you.',
+        { title:'Listen-only call' });
     }
   }
 
@@ -3750,8 +3858,16 @@
     if (!secureOriginOk()){ toast(micBlockedReason(), 6000); return; }
 
     unlockAudio();
-    try { await acquireMic(); }
-    catch(err){ toast(micErrorText(err), 6000); return; }
+    let micOk = false;
+    try { await acquireMic(); micOk = true; }
+    catch(err){
+      const go = await uiConfirm(
+        (micErrorText(err) || 'No microphone was found on this device.') +
+        '\n\nThe call can still go ahead: you will hear the other side clearly, but they will not hear you, ' +
+        'and both screens will say the call is listen only. You can hang up at any time.',
+        { title:'Call without a microphone', ok:'Call anyway', cancel:'Cancel call' });
+      if (!go){ releaseMic(); return; }
+    }
 
     let pass = null;
     if (lockArmed && vaultAvailable()){
@@ -3776,6 +3892,9 @@
     callMsg = null;
     const muteBtn = $('expMuteBtn'); if (muteBtn) muteBtn.classList.remove('active');
     const spkBtn = $('expSpeakerBtn'); if (spkBtn) spkBtn.classList.remove('active');
+
+    callListenOnly = !micOk;
+    if (callListenOnly) callMicMuted = true;
 
     let offerKey = null;
     callKey = null; callKeyKind = 'none';
@@ -3856,6 +3975,8 @@
     const muteBtn = $('expMuteBtn'); if (muteBtn) muteBtn.classList.remove('active');
     const spkBtn = $('expSpeakerBtn'); if (spkBtn) spkBtn.classList.remove('active');
 
+    callListenOnly = false;
+
     // Bring the ringing chat into focus so the call screen is not hidden behind another chat.
     if (state.activeCode !== chat.code){
       state.activeCode = chat.code;
@@ -3890,16 +4011,25 @@
   async function acceptCall(){
     if (!callActive || callConnected || callDirection !== 'in') return;
     unlockAudio();
-    try { await acquireMic(); }
+    let micOk = false;
+    try { await acquireMic(); micOk = true; }
     catch(err){
-      toast(micErrorText(err), 6000);
-      const chat0 = state.chats.find(c => c.code === callChatCode) || activeChat();
-      if (chat0) sendControl(chat0.code, { t:'v_reject' }, true);
-      terminateCall(false, 'declined');
-      return;
+      const go = await uiConfirm(
+        (micErrorText(err) || 'No microphone was found on this device.') +
+        '\n\nAnswer anyway and you will hear the caller, but they will not hear you. ' +
+        'Declining sends a normal "declined" back to them.',
+        { title:'Answer without a microphone', ok:'Answer listen only', cancel:'Decline call' });
+      if (!go){
+        const chat0 = state.chats.find(c => c.code === callChatCode) || activeChat();
+        if (chat0) sendControl(chat0.code, { t:'v_reject' }, true);
+        terminateCall(false, 'declined');
+        return;
+      }
     }
     const chat = state.chats.find(c => c.code === callChatCode) || activeChat();
     if (!chat){ terminateCall(false, 'declined'); return; }
+    callListenOnly = !micOk;
+    if (callListenOnly) callMicMuted = true;
 
     if (callIncomingEncrypted){
       if (!vaultAvailable()){
@@ -3983,7 +4113,7 @@
     callTxSending = false; callTxBackoff = 0; callTxLastRtt = 0; callTxPacketMs = CALL_PACKET_MS_DEFAULT;
     callRxExpected = null; callRxBuffer.clear();
     callRxPlayHead = 0; callRxPrefilled = false; callRxLastPacketAt = 0;
-    callMicMuted = false; callRemoteMuted = false; callPeerMuted = false;
+    callMicMuted = false; callRemoteMuted = false; callPeerMuted = false; callListenOnly = false;
 
     const cs = $('callScreen');
     if (cs) cs.classList.remove('show', 'exp-call-ui', 'ringing');
@@ -4118,11 +4248,16 @@
     } catch(err){
       note.className = 'mic-note err';
       note.textContent = micErrorText(err);
+      uiAlert(micErrorText(err) + '\n\nCalls can still be made and answered without a microphone: you will hear the other side, they will not hear you.',
+        { title:'Microphone test failed' });
     }
   });
 
-  $('regenBtn').addEventListener('click', () => {
-    if (!confirm('Generate a new code?')) return;
+  $('regenBtn').addEventListener('click', async () => {
+    const proceed = await uiConfirm(
+      'Your number is your ntfy topic. With a new one, this device stops listening on the old number and people you have not told will keep writing to the old one.',
+      { title:'Generate a new code?', ok:'Generate new code' });
+    if (!proceed) return;
     const old = ownCode();
     if (globalStreams[old]){ globalStreams[old].close(); delete globalStreams[old]; }
     const nc = makeCode();
@@ -4135,16 +4270,15 @@
   });
 
   $('resetBtn').addEventListener('click', async () => {
-    const ok = confirm(
-      'Reset ntfy Chat on this device?\n\n' +
-      'This deletes ALL data saved on this device:\n' +
+    const ok = await uiConfirm(
+      'This deletes everything saved on this device:\n' +
       '• chats and local copies of messages\n' +
       '• contacts and groups\n' +
       '• your display name, code and settings\n' +
       '• cached photos and voice notes\n' +
       '• browser caches and the service worker\n\n' +
-      'Messages already delivered to ntfy.sh or other devices cannot be deleted.\n\n' +
-      'Continue?'
+      'Messages already delivered to ntfy.sh or other devices cannot be deleted.',
+      { title:'Reset this device?', ok:'Reset everything', danger:true }
     );
     if (!ok) return;
 
@@ -4208,6 +4342,14 @@
   $('passOk').addEventListener('click', () => { const v = $('passInput').value; if (!v) return; resolvePass(v); });
   $('passCancel').addEventListener('click', () => resolvePass(null));
   $('passInput').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); $('passOk').click(); } });
+
+  $('uiDialogOk').addEventListener('click', () => {
+    if (uiDialogMode === 'prompt') uiDialogClose($('uiDialogInput').value);
+    else uiDialogClose(true);
+  });
+  $('uiDialogCancel').addEventListener('click', () => uiDialogClose(uiDialogMode === 'prompt' ? null : false));
+  $('uiDialogInput').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); $('uiDialogOk').click(); } });
+  $('uiDialog').addEventListener('click', e => { if (e.target === $('uiDialog')) uiDialogClose(uiDialogMode === 'prompt' ? null : false); });
 
   $('miReply').addEventListener('click', () => { if (menuTarget) startReply(menuTarget); closeModal('msgMenuModal'); });
   $('miCopy').addEventListener('click', () => { if (menuTarget) copyText(menuTarget.text || snippet(menuTarget), 'Copied'); closeModal('msgMenuModal'); });
@@ -4361,6 +4503,7 @@
     if (!open.length) return;
     const top = open[open.length - 1];
     if (top.id === 'passModal') resolvePass(null);
+    else if (top.id === 'uiDialog') uiDialogClose(uiDialogMode === 'prompt' ? null : false);
     else top.classList.remove('show');
   });
   window.addEventListener('beforeunload', () => {
