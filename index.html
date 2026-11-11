@@ -1215,15 +1215,6 @@
         <p class="field-note" id="encStatus">Checking…</p>
         <button class="settings-btn muted" id="safetyBtn">Show safety number</button>
         <button class="settings-btn muted" id="keyBtn" style="margin-top:8px">Exchange keys again</button>
-        <button class="settings-btn muted" id="acceptKeyBtn" style="margin-top:8px;display:none">Accept new device key…</button>
-      </div>
-
-      <div class="field field-row" style="align-items:flex-start;gap:14px">
-        <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
-          <label style="text-transform:none;font-size:14px;font-weight:600;color:var(--text);letter-spacing:0">Hold messages until encrypted</label>
-          <span class="field-note">If a chat has no key yet, the message is saved and sent by itself once the key arrives, instead of going out in clear text.</span>
-        </div>
-        <label class="toggle"><input type="checkbox" id="strictToggle"><span class="slider"></span></label>
       </div>
 
       <div class="field">
@@ -1231,12 +1222,6 @@
         <p class="field-note">History lives on this device (IndexedDB). Export a JSON file to move it to another device or keep a copy.</p>
         <button class="settings-btn export" id="exportBtn">Export backup</button>
         <button class="settings-btn muted" id="importBtn" style="margin-top:8px">Import backup</button>
-      </div>
-
-      <div class="field">
-        <label>Attachment cache</label>
-        <p class="field-note" id="cacheStatus">Attachment cache: —</p>
-        <button class="settings-btn muted" id="cacheClearBtn">Clear cached attachments</button>
       </div>
 
       <div class="field">
@@ -1327,9 +1312,7 @@
     contacts: (() => { try { const v = JSON.parse(localStorage.getItem('ntfy_contacts') || '[]'); return Array.isArray(v) ? v : []; } catch (_) { return []; } })(),
     showUiEmoji: localStorage.getItem('ntfy_ui_emoji') === '1',
     experimental: localStorage.getItem('ntfy_experimental') === '1',
-    ring: localStorage.getItem('ntfy_ring') !== '0',
-    strictEnc: localStorage.getItem('ntfy_strict') !== '0',
-    warnedHold: false
+    ring: localStorage.getItem('ntfy_ring') !== '0'
   };
   const seenIds = new Set();
   const streams = {};
@@ -1365,8 +1348,6 @@
         pinned: !!c.pinned,
         since: Number(c.since) || 0,
         peerPub: c.peerPub || null,
-        devs: c.devs && typeof c.devs === 'object' ? c.devs : {},
-        pendingDev: c.pendingDev || null,
         e2e: c.e2e || null
       }));
     } catch(_) { return []; }
@@ -1843,18 +1824,7 @@
     if (m.urgent) meta.appendChild(el('span', null, '🚨'));
     if (m.pinned) meta.appendChild(el('span', null, '📌'));
     if (m.mine){
-      let icon = m.read ? '✓✓' : '✓';
-      let title = 'Sent';
-      if (m.status === 'queued'){
-        icon = m.queueReason === 'key' ? '🔐⏳' : '🕓';
-        title = m.queueReason === 'key' ? 'Waiting for the other device key — tap to send unencrypted'
-                                        : 'Queued — retrying automatically (tap to retry now)';
-      } else if (m.status === 'sending'){ icon = '⏳'; title = 'Sending'; }
-      else if (m.status === 'failed'){ icon = '⚠️'; title = 'Failed — tap to retry'; }
-      const t = el('span', 'status-tick' + (m.read ? ' read' : ''), icon);
-      t.title = title;
-      t.style.cursor = 'pointer';
-      t.addEventListener('click', (ev) => { ev.stopPropagation(); retryFromUi(m); });
+      const t = el('span', 'status-tick' + (m.read ? ' read' : ''), m.status === 'sending' ? '⏳' : m.status === 'failed' ? '⚠️' : (m.read ? '✓✓' : '✓'));
       meta.appendChild(t);
     }
     row.appendChild(meta);
@@ -2105,58 +2075,50 @@
   }
 
   /* =====================================================================
-     STORAGE · DEVICE KEYS · OUTBOX   (v3)
+     LOCAL STORAGE THAT OUTLIVES localStorage
      ---------------------------------------------------------------------
-     Four things live here so the rest of the app can stay simple:
-
-     1. IndexedDB   — the real copy of history and of every attachment, far
-                      beyond localStorage's ~5 MB. localStorage is still
-                      written first (synchronous) so the app paints instantly.
-     2. Device keys — every install gets its own stable device id and its own
-                      ECDH P-256 key pair, so a phone and a laptop no longer
-                      overwrite each other's key. Keys are pinned the first
-                      time they are seen.
-     3. Outbox      — a send that fails or is held back is queued, retried with
-                      backoff and flushed when the link (or the key) returns.
-     4. Backup      — one JSON file with chats, media and contacts.
+     localStorage is capped around 5 MB and dies with "clear site data", so
+     the real copy of the history now lives in IndexedDB (usually hundreds of
+     MB). localStorage is still written first because it is synchronous and
+     lets the app paint instantly; IndexedDB is then flushed a moment later and
+     is merged back in on the next start, so a bigger, older history survives.
      ===================================================================== */
-
-  /* ---------------- 1. IndexedDB ---------------- */
-  const IDB_NAME = 'ntfy-chat-db', IDB_VERSION = 2;
+  const IDB_NAME = 'ntfy-chat-db', IDB_VERSION = 1;
   let idbPromise = null, idbSaveTimer = null;
 
   function idbOpen(){
     if (idbPromise) return idbPromise;
-    /* Do not memoise "unavailable": a browser that blocks storage on first
-       paint (private mode, permission prompt) may allow it a moment later. */
-    if (!window.indexedDB) return Promise.resolve(null);
     idbPromise = new Promise(resolve => {
+      if (!window.indexedDB){ resolve(null); return; }
       let req;
       try { req = indexedDB.open(IDB_NAME, IDB_VERSION); } catch(_){ resolve(null); return; }
       req.onupgradeneeded = () => {
         const db = req.result;
-        ['kv', 'chats', 'media'].forEach(name => {
-          if (!db.objectStoreNames.contains(name)) db.createObjectStore(name);
-        });
+        if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+        if (!db.objectStoreNames.contains('chats')) db.createObjectStore('chats');
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => resolve(null);
       req.onblocked = () => resolve(null);
+      req.onversionchange = () => { try { req.result.close(); } catch(_){} };
     });
     return idbPromise;
   }
   async function idbGet(store, key){
-    const db = await idbOpen(); if (!db) return null;
+    const db = await idbOpen();
+    if (!db) return null;
     return new Promise(resolve => {
       try {
-        const r = db.transaction(store, 'readonly').objectStore(store).get(key);
+        const tx = db.transaction(store, 'readonly');
+        const r = tx.objectStore(store).get(key);
         r.onsuccess = () => resolve(r.result == null ? null : r.result);
         r.onerror = () => resolve(null);
       } catch(_){ resolve(null); }
     });
   }
   async function idbPut(store, key, val){
-    const db = await idbOpen(); if (!db) return false;
+    const db = await idbOpen();
+    if (!db) return false;
     return new Promise(resolve => {
       try {
         const tx = db.transaction(store, 'readwrite');
@@ -2167,336 +2129,317 @@
       } catch(_){ resolve(false); }
     });
   }
-  async function idbClear(store){
-    const db = await idbOpen(); if (!db) return false;
-    return new Promise(resolve => {
-      try {
-        const tx = db.transaction(store, 'readwrite');
-        tx.objectStore(store).clear();
-        tx.oncomplete = () => resolve(true);
-        tx.onerror = () => resolve(false);
-      } catch(_){ resolve(false); }
-    });
-  }
   function scheduleIdbSave(){
     if (idbSaveTimer) clearTimeout(idbSaveTimer);
-    idbSaveTimer = setTimeout(() => { idbSaveTimer = null; idbSaveChats(); }, 450);
+    idbSaveTimer = setTimeout(() => {
+      idbSaveTimer = null;
+      idbSaveChats();
+    }, 450);
   }
   async function idbSaveChats(){
-    try { await idbPut('chats', 'all', { savedAt: Date.now(), chats: state.chats }); }
-    catch(_){}
+    try { await idbPut('chats', 'all', { savedAt: Date.now(), chats: state.chats }); } catch(_){}
   }
   async function idbLoadChats(){
     const rec = await idbGet('chats', 'all');
-    return rec && Array.isArray(rec.chats) ? rec : null;
+    return (rec && Array.isArray(rec.chats)) ? rec : null;
   }
+
+  /* Shape one chat the way the app expects, wherever it came from. */
+  function normalizeChat(c){
+    if (!c || !c.code) return null;
+    return {
+      code: String(c.code),
+      title: c.title || ('Chat ' + c.code),
+      messages: Array.isArray(c.messages) ? c.messages.filter(m => m && m.id) : [],
+      unread: Number(c.unread) || 0,
+      own: !!c.own,
+      group: !!c.group,
+      members: Array.isArray(c.members) ? c.members : [],
+      pinned: !!c.pinned,
+      since: Number(c.since) || 0,
+      peerPub: c.peerPub || null,
+      e2e: c.e2e || null
+    };
+  }
+
+  /* Union two lists of chats: every message kept once, newest data wins. */
   function mergeChatLists(local, remote){
     const byCode = new Map();
-    (local || []).forEach(c => byCode.set(c.code, JSON.parse(JSON.stringify(c))));
+    (local || []).forEach(c => { const n = normalizeChat(c); if (n) byCode.set(n.code, n); });
     (remote || []).forEach(rc => {
-      const lc = byCode.get(rc.code);
-      if (!lc){ byCode.set(rc.code, JSON.parse(JSON.stringify(rc))); return; }
+      const n = normalizeChat(rc);
+      if (!n) return;
+      const lc = byCode.get(n.code);
+      if (!lc){ byCode.set(n.code, n); return; }
       const ids = new Set((lc.messages || []).map(m => m.id));
       const evIds = new Set((lc.messages || []).map(m => m.eventId).filter(Boolean));
-      (rc.messages || []).forEach(m => {
+      (n.messages || []).forEach(m => {
         if (ids.has(m.id)) return;
         if (m.eventId && evIds.has(m.eventId)) return;
         lc.messages.push(m);
       });
       lc.messages.sort((a, b) => (a.time || 0) - (b.time || 0));
-      lc.title = lc.title || rc.title;
-      lc.since = Math.max(lc.since || 0, rc.since || 0);
-      if (rc.peerPub && !lc.peerPub) lc.peerPub = rc.peerPub;
-      if (rc.devs) lc.devs = Object.assign({}, rc.devs, lc.devs || {});
-      if (rc.unread) lc.unread = Math.max(lc.unread || 0, rc.unread);
+      if (!lc.title || /^Chat \d+$/.test(lc.title)) lc.title = n.title || lc.title;
+      lc.since = Math.max(lc.since || 0, n.since || 0);
+      lc.unread = Math.max(lc.unread || 0, n.unread || 0);
+      if (!lc.peerPub && n.peerPub) lc.peerPub = n.peerPub;
+      lc.pinned = lc.pinned || n.pinned;
+      lc.own = lc.own || n.own;
+      lc.group = lc.group || n.group;
     });
     return Array.from(byCode.values());
   }
+
   async function restoreFromIdb(){
+    let rec = null;
+    try { rec = await idbLoadChats(); } catch(_){}
+    if (!rec){ idbSaveChats(); return; }
     try {
-      const rec = await idbLoadChats();
-      if (!rec){ idbSaveChats(); return; }
       const before = state.chats.reduce((n, c) => n + (c.messages || []).length, 0);
       const merged = mergeChatLists(state.chats, rec.chats);
       const after = merged.reduce((n, c) => n + (c.messages || []).length, 0);
       if (after > before){
         state.chats = merged;
-        state.chats.forEach(migrateChat);
+        if (!state.activeCode && state.chats[0]) state.activeCode = state.chats[0].code;
         seedSeen();
         saveChats();
         renderChatList();
         renderMessages();
         subscribeAll();
         toast('Restored ' + (after - before) + ' older message(s) from this device', 3200);
+      } else {
+        idbSaveChats();
       }
-      hydrateChatMedia(activeChat());
-      updateEncBadge();
     } catch(_){}
   }
 
-  /* ---------------- 2. Device identity ---------------- */
-  function e2eSupported(){
-    return !!(window.crypto && window.crypto.subtle && window.crypto.subtle.generateKey && window.isSecureContext !== false);
+  /* ---------------------------- backup / restore ---------------------------- */
+  function exportBackup(){
+    const data = {
+      app: 'ntfy-chat', version: 2, exportedAt: new Date().toISOString(),
+      name: state.name, code: ownCode(), contacts: state.contacts, chats: state.chats
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'ntfy-chat-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => { try { URL.revokeObjectURL(url); } catch(_){} }, 5000);
+    toast('Backup exported');
   }
-  function getDeviceId(){
-    let d = localStorage.getItem('ntfy_did');
-    if (!d || !/^[a-z0-9]{8,24}$/.test(d)){
-      const bytes = crypto.getRandomValues(new Uint8Array(8));
-      d = Array.from(bytes).map(b => b.toString(36).padStart(2, '0')).join('').slice(0, 14);
-      try { localStorage.setItem('ntfy_did', d); } catch(_){}
+
+  async function importBackup(file){
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (!data || !Array.isArray(data.chats)) throw new Error('the file has no chat list');
+      state.chats = mergeChatLists(state.chats, data.chats);
+      if (Array.isArray(data.contacts)){
+        data.contacts.forEach(c => {
+          if (c && c.number && c.name && !state.contacts.some(x => x.number === c.number)) state.contacts.push({ name: c.name, number: c.number });
+        });
+        saveContacts();
+      }
+      if (!state.activeCode && state.chats[0]) state.activeCode = state.chats[0].code;
+      seedSeen();
+      saveChats();
+      renderChatList();
+      renderMessages();
+      subscribeAll();
+      updateEncStatus();
+      toast('Imported ' + state.chats.length + ' conversation(s)', 3200);
+    } catch(err){
+      uiAlert('That file could not be read as an ntfy Chat backup.\n\n' + ((err && err.message) || 'Unknown error'),
+        { title: 'Import failed' });
     }
-    return d;
   }
+
+  /* =====================================================================
+     END-TO-END ENCRYPTION — on by default, no passcodes to type
+     ---------------------------------------------------------------------
+     Each device owns an ECDH P-256 key pair. The public half is published on
+     the chat's ntfy topic; both sides run ECDH and pass the shared secret
+     through HKDF-SHA256 to get the same AES-GCM key. A passive reader of the
+     topic sees two public keys and ciphertext, so messages, photos, voice
+     notes, locations and call audio are unreadable without either private key.
+     The safety number is a fingerprint of both public keys: compare it out
+     loud once and you know there is no one in the middle.
+     ===================================================================== */
+  const E2E_PREFIX = 'E2E1|';
+  const e2eCache = new Map();          // chat code -> CryptoKey
   let idKeyPair = null, idKeyLoading = null;
+
+  function e2eSupported(){ return !!(window.crypto && window.crypto.subtle && window.isSecureContext !== false); }
+
   async function loadIdKeyPair(){
     if (idKeyPair) return idKeyPair;
     if (idKeyLoading) return idKeyLoading;
     idKeyLoading = (async () => {
       let jwk = null;
       try { jwk = await idbGet('kv', 'idkey'); } catch(_){}
-      if (!jwk){ try { jwk = JSON.parse(localStorage.getItem('ntfy_idkey') || 'null'); } catch(_){} }
+      if (!jwk){ try { jwk = JSON.parse(localStorage.getItem('ntfy_idkey') || 'null'); } catch(_){ jwk = null; } }
       if (jwk && jwk.d && jwk.x && jwk.y){
         try {
           const priv = await crypto.subtle.importKey('jwk', jwk, { name:'ECDH', namedCurve:'P-256' }, true, ['deriveBits']);
-          const pub = await crypto.subtle.importKey('jwk', { kty:'EC', crv:'P-256', x: jwk.x, y: jwk.y, ext:true }, { name:'ECDH', namedCurve:'P-256' }, true, []);
-          idKeyPair = { privateKey: priv, publicKey: pub };
+          const pub = await crypto.subtle.importKey('jwk', { kty:jwk.kty, crv:jwk.crv, x:jwk.x, y:jwk.y, ext:true },
+            { name:'ECDH', namedCurve:'P-256' }, true, []);
+          idKeyPair = { privateKey: priv, publicKey: pub, jwk };
           return idKeyPair;
         } catch(_){}
       }
       const kp = await crypto.subtle.generateKey({ name:'ECDH', namedCurve:'P-256' }, true, ['deriveBits']);
       const exported = await crypto.subtle.exportKey('jwk', kp.privateKey);
-      idKeyPair = { privateKey: kp.privateKey, publicKey: kp.publicKey };
+      idKeyPair = { privateKey: kp.privateKey, publicKey: kp.publicKey, jwk: exported };
       try { await idbPut('kv', 'idkey', exported); } catch(_){}
       try { localStorage.setItem('ntfy_idkey', JSON.stringify(exported)); } catch(_){}
       return idKeyPair;
     })();
     return idKeyLoading;
   }
-  let myPubCache = null;
   async function myPublicKeyB64(){
-    if (myPubCache) return myPubCache;
     const kp = await loadIdKeyPair();
     const spki = await crypto.subtle.exportKey('spki', kp.publicKey);
-    myPubCache = bufToB64(spki);
-    return myPubCache;
+    return bufToB64(spki);
   }
-  function didFromKey(pubB64){
-    /* a stable stand-in id for peers on older builds that send no device id */
-    let h = 0;
-    const s = String(pubB64 || '');
-    for (let i = 0; i < s.length; i++){ h = (h * 31 + s.charCodeAt(i)) >>> 0; }
-    return 'k' + h.toString(36);
-  }
-
-  /* ---------------- 3. Per-chat device registry, pinned ---------------- */
-  function migrateChat(chat){
-    if (!chat) return chat;
-    if (!chat.devs) chat.devs = {};
-    if (chat.peerPub && !Object.keys(chat.devs).length){
-      chat.devs[didFromKey(chat.peerPub)] = { k: chat.peerPub, n: '', at: Date.now(), legacy: 1 };
-      delete chat.peerPub;
-    }
-    if (!chat.pendingDev) chat.pendingDev = null;
-    return chat;
-  }
-  function peerDevices(chat){
-    migrateChat(chat);
-    return Object.keys(chat.devs || {})
-      .map(did => ({ did, k: chat.devs[did].k, n: chat.devs[did].n || '', at: chat.devs[did].at || 0 }))
-      .filter(d => d.k);
-  }
-  function rememberPeerDevice(chat, did, pub, name){
-    migrateChat(chat);
-    if (!did) did = didFromKey(pub);
-    const known = chat.devs[did];
-    if (!known){
-      if (Object.keys(chat.devs).length >= 4){
-        /* keep the four most recent installs so packets stay small */
-        const oldest = Object.keys(chat.devs).sort((a, b) => (chat.devs[a].at || 0) - (chat.devs[b].at || 0))[0];
-        delete chat.devs[oldest];
-        chanKeyCache.clear();
-      }
-      chat.devs[did] = { k: pub, n: name || '', at: Date.now() };
-      saveChats();
-      return 'new';
-    }
-    if (known.k === pub){ known.n = name || known.n; known.at = Date.now(); return 'same'; }
-    /* A different key under the same device id is either a reinstall or a
-       swap attack. Never replace the pinned key silently. */
-    chat.pendingDev = { did, k: pub, n: name || '', at: Date.now() };
-    saveChats();
-    return 'mismatch';
-  }
-  function acceptPendingDevice(chat){
-    if (!chat || !chat.pendingDev) return false;
-    const p = chat.pendingDev;
-    chat.devs[p.did] = { k: p.k, n: p.n, at: Date.now() };
-    chat.pendingDev = null;
-    chanKeyCache.clear();
-    saveChats();
-    announceKey(chat, false);
-    flushOutbox();
-    return true;
-  }
-
-  /* ---------------- 4. Key derivation ---------------- */
-  const chanKeyCache = new Map();
-  async function importPub(b64){
-    return crypto.subtle.importKey('spki', b64ToBytes(b64 || ''), { name:'ECDH', namedCurve:'P-256' }, true, []);
-  }
-  async function deriveKeyFor(peerPubB64){
+  async function deriveChannelKey(peerPubB64){
     const kp = await loadIdKeyPair();
-    const peer = await importPub(peerPubB64);
+    const peerBytes = b64ToBytes(peerPubB64 || '');
+    if (!peerBytes.length) throw new Error('no peer key');
+    const peer = await crypto.subtle.importKey('spki', peerBytes, { name:'ECDH', namedCurve:'P-256' }, true, []);
     const shared = await crypto.subtle.deriveBits({ name:'ECDH', public: peer }, kp.privateKey, 256);
     const mine = await myPublicKeyB64();
     const info = [mine, peerPubB64].sort().join('|');
     const base = await crypto.subtle.importKey('raw', shared, 'HKDF', false, ['deriveKey']);
     return crypto.subtle.deriveKey(
-      { name:'HKDF', hash:'SHA-256', salt: new TextEncoder().encode('ntfychat-e2e-v2'), info: new TextEncoder().encode(info) },
-      base, { name:'AES-GCM', length:256 }, false, ['encrypt', 'decrypt']);
+      { name:'HKDF', hash:'SHA-256', salt: new TextEncoder().encode('ntfychat-e2e-v1'),
+        info: new TextEncoder().encode(info) },
+      base, { name:'AES-GCM', length:256 }, true, ['encrypt','decrypt']);
   }
-  async function keyForDevice(chat, dev){
-    const cacheKey = chat.code + '|' + dev.k;
-    if (chanKeyCache.has(cacheKey)) return chanKeyCache.get(cacheKey);
+  async function channelKey(chat){
+    if (!chat || chat.group || !chat.peerPub || !e2eSupported()) return null;
+    if (e2eCache.has(chat.code)) return e2eCache.get(chat.code);
     try {
-      const key = await deriveKeyFor(dev.k);
-      chanKeyCache.set(cacheKey, key);
+      const key = await deriveChannelKey(chat.peerPub);
+      e2eCache.set(chat.code, key);
       return key;
     } catch(_){ return null; }
   }
-  async function deviceKeys(chat){
-    if (!chat || chat.group || !e2eSupported()) return [];
-    const out = [];
-    for (const dev of peerDevices(chat)){
-      const key = await keyForDevice(chat, dev);
-      if (key) out.push({ dev, key });
-    }
-    return out;
-  }
-
-  /* ---------------- 5. Sealing ---------------- */
-  const E2E_PREFIX = 'E2E1|';
-  async function sealValueFor(key, value){
+  async function sealValue(key, value){
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const pt = new TextEncoder().encode(JSON.stringify(value));
     const ct = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, pt);
     return bufToB64(iv) + '|' + bufToB64(new Uint8Array(ct));
   }
-  async function openValueWith(key, sealed){
+  async function openValue(key, sealed){
     const parts = String(sealed || '').split('|');
     if (parts.length !== 2) throw new Error('bad envelope');
-    const pt = await crypto.subtle.decrypt(
-      { name:'AES-GCM', iv: b64ToBytes(parts[0]) }, key, b64ToBytes(parts[1]));
+    const iv = b64ToBytes(parts[0]);
+    const ct = b64ToBytes(parts[1]);
+    const pt = await crypto.subtle.decrypt({ name:'AES-GCM', iv }, key, ct);
     return JSON.parse(new TextDecoder().decode(pt));
   }
-  async function sealForDevices(chat, value){
-    const keys = await deviceKeys(chat);
-    if (!keys.length) return null;
-    const mine = await myPublicKeyB64();
-    const entries = [];
-    for (const { key } of keys){
-      try { entries.push({ k: mine, d: await sealValueFor(key, value) }); } catch(_){}
+  async function safetyNumber(chat){
+    if (!chat || !chat.peerPub) return null;
+    try {
+      const mine = await myPublicKeyB64();
+      const pair = [mine, chat.peerPub].sort().join('|');
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('ntfychat-safety|' + pair));
+      const b = new Uint8Array(digest);
+      const groups = [];
+      for (let i = 0; i < 12; i++){
+        const v = ((b[i * 2] << 8) | b[i * 2 + 1]) % 100000;
+        groups.push(String(v).padStart(5, '0'));
+      }
+      return groups.join(' ');
+    } catch(_){ return null; }
+  }
+
+  /* Encrypting one outgoing message: short ones ride a control message, long
+     ones go through the normal chunked text path so ntfy never answers 413. */
+  async function sendTextPayload(chat, name, text, quote, msg){
+    const key = await channelKey(chat);
+    if (!key){
+      if (quote){
+        const id = await sendControl(chat.code, { t:'m', m: text, q: quote });
+        msg.eventId = id; msg.status = id ? 'sent' : 'failed';
+        saveChats(); rerender();
+      } else {
+        await postText(chat, name + ': ' + text, msg, baseHeaders());
+      }
+      return;
     }
-    return entries.length ? entries : null;
-  }
-  async function openSealedEntries(entries){
-    for (const entry of (entries || [])){
-      if (!entry || !entry.k || !entry.d) continue;
-      try {
-        const key = await deriveKeyFor(entry.k);
-        return await openValueWith(key, entry.d);
-      } catch(_){ /* not for this device, try the next envelope */ }
+    let sealed = null;
+    try { sealed = await sealValue(key, { m: text, q: quote || null }); }
+    catch(_){ await postText(chat, name + ': ' + text, msg, baseHeaders()); return; }
+    msg.enc = true;
+    if (sealed.length <= 1800){
+      const id = await sendControl(chat.code, { t:'e2e', d: sealed });
+      msg.eventId = id; msg.status = id ? 'sent' : 'failed';
+      saveChats(); rerender();
+    } else {
+      await postText(chat, name + ': ' + E2E_PREFIX + sealed, msg, baseHeaders());
     }
-    return null;
   }
-  function parseSealedEnvelope(raw){
-    const s = String(raw || '');
-    if (s.charAt(0) === '['){ try { return JSON.parse(s); } catch(_){ return null; } }
-    return [{ k: null, d: s }];   /* legacy single-recipient envelope */
+
+  const pkSentAt = {};
+  async function announceKey(chat, force){
+    if (!chat || chat.group || !e2eSupported()) return;
+    const now = Date.now();
+    if (!force && pkSentAt[chat.code] && now - pkSentAt[chat.code] < 120000) return;
+    pkSentAt[chat.code] = now;
+    try {
+      const pub = await myPublicKeyB64();
+      await sendControlEx(chat.code, { t:'pk', k: pub, n: state.name, v:1 }, { ephemeral:true, raw:true });
+    } catch(_){}
   }
-  async function openLegacyEnvelope(chat, sealed){
-    const keys = await deviceKeys(chat);
-    for (const { key } of keys){
-      try { return await openValueWith(key, sealed); } catch(_){}
-    }
-    return null;
+  async function requestPeerKey(chat){
+    if (!chat || chat.group || !e2eSupported()) return;
+    try { await sendControlEx(chat.code, { t:'pkreq' }, { ephemeral:true, raw:true }); } catch(_){}
   }
-  async function deliverSealed(chat, from, base, raw){
-    const entries = parseSealedEnvelope(raw);
-    if (!entries) return;
+
+  /* Decrypt one inbound envelope and hand the result to the normal pipeline. */
+  async function deliverSealed(chat, from, base, sealed){
+    const key = await channelKey(chat);
+    if (!key){ requestPeerKey(chat); return; }
     let payload = null;
-    if (entries[0] && entries[0].k == null) payload = await openLegacyEnvelope(chat, entries[0].d);
-    else payload = await openSealedEntries(entries);
-    if (!payload){ requestPeerKey(chat); return; }
+    try { payload = await openValue(key, sealed); } catch(_){ return; }
+    if (!payload) return;
     if (payload.k === 'loc'){
       const msg = Object.assign({}, base, { sender: from, kind:'location', lat: payload.lat, lng: payload.lng, acc: payload.acc, enc:true });
-      deliver(chat, msg); notifyMsg(msg);
+      deliver(chat, msg);
+      notifyMsg(msg);
       return;
     }
     if (typeof payload.m !== 'string') return;
     const msg = Object.assign({}, base, { sender: from, text: payload.m, quote: payload.q || null, kind:'text', enc:true });
-    deliver(chat, msg); notifyMsg(msg);
+    deliver(chat, msg);
+    notifyMsg(msg);
   }
 
-  /* ---------------- 6. Attachment sealing (wrapped content key) ---------------- */
-  async function sealAttachmentFor(chat, blob){
-    const keys = await deviceKeys(chat);
-    if (!keys.length) return null;
-    const contentKey = await crypto.subtle.generateKey({ name:'AES-GCM', length:256 }, true, ['encrypt', 'decrypt']);
-    const rawKey = await crypto.subtle.exportKey('raw', contentKey);
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const ct = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, contentKey, await blob.arrayBuffer());
-    const mine = await myPublicKeyB64();
-    const wrapped = [];
-    for (const { key } of keys){
-      try {
-        const wIv = crypto.getRandomValues(new Uint8Array(12));
-        const wct = await crypto.subtle.encrypt({ name:'AES-GCM', iv: wIv }, key, rawKey);
-        wrapped.push({ k: mine, w: bufToB64(wIv) + '|' + bufToB64(new Uint8Array(wct)) });
-      } catch(_){}
-    }
-    if (!wrapped.length) return null;
-    return {
-      blob: new Blob([ct], { type:'application/octet-stream' }),
-      meta: { ce: 1, iv: bufToB64(iv), keys: wrapped }
-    };
+  /* Decrypt an attachment blob that arrived sealed. */
+  async function openSealedAttachment(chat, msg, blob){
+    const key = await channelKey(chat);
+    if (!key) throw new Error('no channel key');
+    const ct = await blob.arrayBuffer();
+    const pt = await crypto.subtle.decrypt({ name:'AES-GCM', iv: b64ToBytes(msg.cipherIv || '') }, key, ct);
+    return new Blob([pt], { type: msg.mime || 'application/octet-stream' });
   }
-  async function openAttachmentFor(chat, msg, blob){
-    if (!msg || !msg.enc) return blob;
-    if (msg.cipherKeys){
-      for (const entry of msg.cipherKeys){
-        try {
-          const key = await deriveKeyFor(entry.k);
-          const parts = String(entry.w || '').split('|');
-          const rawKey = await crypto.subtle.decrypt(
-            { name:'AES-GCM', iv: b64ToBytes(parts[0]) }, key, b64ToBytes(parts[1]));
-          const contentKey = await crypto.subtle.importKey('raw', rawKey, { name:'AES-GCM' }, false, ['decrypt']);
-          const pt = await crypto.subtle.decrypt(
-            { name:'AES-GCM', iv: b64ToBytes(msg.cipherIv || '') }, contentKey, await blob.arrayBuffer());
-          return new Blob([pt], { type: msg.mime || 'application/octet-stream' });
-        } catch(_){}
-      }
-      throw new Error('no usable key for this file');
-    }
-    /* legacy: whole blob sealed with the channel key */
-    const keys = await deviceKeys(chat);
-    for (const { key } of keys){
-      try {
-        const pt = await crypto.subtle.decrypt({ name:'AES-GCM', iv: b64ToBytes(msg.cipherIv || '') }, key, await blob.arrayBuffer());
-        return new Blob([pt], { type: msg.mime || 'application/octet-stream' });
-      } catch(_){}
-    }
-    throw new Error('no usable key for this file');
-  }
-  async function hydrateSealedAttachment(chat, msg, url){
+
+  async function hydrateSealedAttachment(chat, msg){
     try {
-      const resp = await fetch(url || msg.attachUrl);
+      const resp = await fetch(msg.attachUrl);
       if (!resp.ok) throw new Error('expired');
-      const cipher = await resp.blob();
-      const plain = await openAttachmentFor(chat, msg, cipher);
+      const plain = await openSealedAttachment(chat, msg, await resp.blob());
       msg.size = plain.size;
       if (msg.kind === 'image'){
-        msg.dataUrl = await blobToDataUrl(plain);
+        const du = await blobToDataUrl(plain);
+        const small = await processImageSource(du, 1200, 0.82);
+        msg.dataUrl = small.dataUrl;
+        delete msg.attachUrl;
         msg.cached = true;
       } else {
         msg.attachUrl = URL.createObjectURL(plain);
@@ -2504,338 +2447,38 @@
       msg.status = 'received';
       saveChats();
       if (state.activeCode === chat.code) renderMessages();
-      cacheMediaBlob(chat, msg, plain);
+      notifyMsg(msg);
     } catch(err){
       msg.status = 'failed';
-      saveChats();
       if (state.activeCode === chat.code) renderMessages();
-      toast('Could not open that file: ' + ((err && err.message) || 'key missing'));
+      toast('A locked attachment could not be opened', 4000);
     }
   }
 
-  /* ---------------- 7. Keys on the wire ---------------- */
-  const pkSentAt = {};
-  async function announceKey(chat, force){
-    if (!chat || chat.group || !e2eSupported()) return;
-    const now = Date.now();
-    if (!force && pkSentAt[chat.code] && now - pkSentAt[chat.code] < 60000) return;
-    pkSentAt[chat.code] = now;
-    try {
-      await sendControlEx(chat.code, { t:'pk', k: await myPublicKeyB64(), n: state.name, did: getDeviceId(), v:3 }, { ephemeral:true, raw:true });
-    } catch(_){}
-  }
-  async function requestPeerKey(chat){
-    if (!chat || chat.group || !e2eSupported()) return;
-    try { await sendControlEx(chat.code, { t:'pkreq' }, { ephemeral:true, raw:true }); } catch(_){}
-  }
-  async function safetyNumberFor(peerPub){
-    try {
-      const mine = await myPublicKeyB64();
-      const pair = [mine, peerPub].sort().join('|');
-      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('ntfychat-safety|' + pair));
-      const bytes = new Uint8Array(digest);
-      const groups = [];
-      for (let i = 0; i < 12; i++){
-        groups.push(String(((bytes[i * 2] << 8) | bytes[i * 2 + 1]) % 100000).padStart(5, '0'));
-      }
-      return groups.join(' ');
-    } catch(_){ return null; }
-  }
-  async function safetyNumber(chat){
-    const devs = peerDevices(chat);
-    if (!devs.length) return null;
-    return safetyNumberFor(devs[0].k);
-  }
-  async function exchangeKeys(){
+  function updateEncStatus(){
     const chat = activeChat();
-    if (!chat) return;
-    if (chat.group){ uiAlert('Groups share one topic, so they use the topic as the trust boundary. Encryption applies to one-to-one chats.', { title:'Group chat' }); return; }
-    if (!e2eSupported()){ uiAlert('This page is not a secure context (https), so the browser will not give the app a crypto key.', { title:'Encryption unavailable' }); return; }
-    await announceKey(chat, true);
-    await requestPeerKey(chat);
-    toast('Key announced — waiting for theirs', 3000);
+    const el = $('encStatus');
+    if (el){
+      if (!e2eSupported()) el.textContent = 'Unavailable: this page is not https, so the browser will not hand out encryption keys.';
+      else if (!chat) el.textContent = 'Open a conversation to see its encryption state.';
+      else if (chat.group) el.textContent = 'Groups use the shared topic only. One to one chats get end-to-end encryption; use Vault Lock inside a group for private text.';
+      else if (chat.peerPub) el.textContent = 'On. Messages, photos, voice notes, locations and calls in this chat are sealed with a key only these two devices can derive.';
+      else el.textContent = 'Waiting for the other device. Once it is online, keys swap automatically and everything sent after that is sealed.';
+    }
+    updateEncBadge();
   }
 
-  /* ---------------- 8. Media cache ---------------- */
-  const MEDIA_LIMIT_BYTES = 200 * 1024 * 1024;
-  const MEDIA_MAX_ITEM = 20 * 1024 * 1024;
-  async function cacheMediaBlob(chat, msg, blob){
-    try {
-      if (!msg || !blob || !blob.size || blob.size > MEDIA_MAX_ITEM) return;
-      await idbPut('media', msg.id, { blob, mime: blob.type || msg.mime || '', at: Date.now() });
-      msg.mediaKey = msg.id;
-      let total = Number(await idbGet('kv', 'mediaBytes')) || 0;
-      total += blob.size;
-      await idbPut('kv', 'mediaBytes', total);
-      if (total > MEDIA_LIMIT_BYTES) pruneMediaCache();
-      scheduleIdbSave();
-    } catch(_){}
-  }
-  async function pruneMediaCache(){
-    /* oldest files out first; the messages keep working online */
-    try {
-      const db = await idbOpen(); if (!db) return;
-      const recs = await new Promise(resolve => {
-        const out = [];
-        try {
-          const r = db.transaction('media', 'readonly').objectStore('media').openCursor();
-          r.onsuccess = () => {
-            const cur = r.result;
-            if (cur){ out.push({ key: cur.key, at: (cur.value && cur.value.at) || 0 }); cur.continue(); }
-            else resolve(out);
-          };
-          r.onerror = () => resolve(out);
-        } catch(_){ resolve(out); }
-      });
-      recs.sort((a, b) => a.at - b.at);
-      let total = Number(await idbGet('kv', 'mediaBytes')) || 0;
-      for (const rec of recs){
-        if (total <= MEDIA_LIMIT_BYTES * 0.8) break;
-        await idbPut('media', rec.key, null);
-        total -= 1;
-      }
-      await idbPut('kv', 'mediaBytes', Math.max(0, total));
-    } catch(_){}
-  }
-  async function loadCachedMedia(msg){
-    if (!msg || msg.dataUrl || msg.attachUrl) return false;
-    const key = msg.mediaKey || msg.id;
-    if (!key) return false;
-    const rec = await idbGet('media', key);
-    if (!rec || !rec.blob) return false;
-    if (msg.kind === 'image') msg.dataUrl = await blobToDataUrl(rec.blob);
-    else msg.attachUrl = URL.createObjectURL(rec.blob);
-    return true;
-  }
-  async function hydrateChatMedia(chat){
-    if (!chat) return;
-    let changed = false;
-    for (const m of (chat.messages || [])){
-      if (m && m.mediaKey && !m.dataUrl && !m.attachUrl){
-        try { if (await loadCachedMedia(m)) changed = true; } catch(_){}
-      }
-    }
-    if (changed && state.activeCode === chat.code) renderMessages();
-    renderChatList();
-  }
-  async function mediaCacheStats(){
-    const bytes = Number(await idbGet('kv', 'mediaBytes')) || 0;
-    return humanSize(bytes) || '0 B';
-  }
-  async function clearMediaCache(){
-    const go = await uiConfirm('Photos, voice notes and files saved on this device will be deleted. Messages stay, and anything still on ntfy can be downloaded again while its link is alive.', { title:'Clear attachment cache', ok:'Clear cache', danger:true });
-    if (!go) return;
-    await idbClear('media');
-    await idbPut('kv', 'mediaBytes', 0);
-    state.chats.forEach(c => c.messages.forEach(m => { m.mediaKey = null; }));
-    saveChats(); rerender();
-    refreshStorageRow();
-    toast('Attachment cache cleared');
-  }
-  async function refreshStorageRow(){
-    const el = $('cacheStatus');
-    if (el){ try { el.textContent = 'Attachment cache: ' + await mediaCacheStats(); } catch(_){ el.textContent = 'Attachment cache: —'; } }
-  }
-
-  /* ---------------- 9. Outbox ---------------- */
-  let flushTimer = null, flushing = false;
-  function scheduleFlush(delay){
-    if (flushTimer) clearTimeout(flushTimer);
-    flushTimer = setTimeout(() => { flushTimer = null; flushOutbox(); }, delay == null ? 4000 : delay);
-  }
-  function queueMessage(chat, msg, reason){
-    msg.status = 'queued';
-    msg.queueReason = reason || 'network';
-    msg.nextTry = Date.now() + 3000;
-    saveChats();
-    if (state.activeCode === chat.code) renderMessages();
-    scheduleFlush(3000);
-  }
-  async function flushOutbox(){
-    if (flushing) return;
-    flushing = true;
-    try {
-      for (const chat of state.chats){
-        const pending = (chat.messages || []).filter(m => m.mine && m.status === 'queued' && (!m.nextTry || m.nextTry <= Date.now()));
-        for (const m of pending){
-          await retryQueued(chat, m);
-          if (m.status === 'queued') break;   /* stay in order per chat */
-        }
-      }
-    } catch(_){}
-    flushing = false;
-    const any = state.chats.some(c => (c.messages || []).some(m => m.status === 'queued'));
-    if (any) scheduleFlush(8000);
-  }
-  async function retryQueued(chat, m){
-    m.tries = (m.tries || 0) + 1;
-    if (m.tries > 14){ m.status = 'failed'; m.queueReason = null; saveChats(); rerender(); return; }
-    if (m.kind === 'text'){
-      const keys = await deviceKeys(chat);
-      if (m.queueReason === 'key' && !keys.length){
-        m.nextTry = Date.now() + 4000; saveChats(); return;
-      }
-      if (m.queueReason === 'key' && keys.length) m.queueReason = 'network';
-      m.status = 'sending';
-      saveChats();
-      if (state.activeCode === chat.code) renderMessages();
-      await sendTextPayload(chat, m.sender || state.name, m.text, m.quote || null, m);
-      if (m.status !== 'sent'){
-        m.status = 'queued';
-        m.nextTry = Date.now() + Math.min(60000, 3000 * m.tries);
-      } else {
-        m.tries = 0; m.queueReason = null; m.nextTry = 0;
-      }
-    } else if (m.kind === 'image' || m.kind === 'audio' || m.kind === 'file'){
-      const job = pendingUploads.get(m.id);
-      if (!job){ m.status = 'failed'; m.queueReason = null; saveChats(); rerender(); return; }
-      m.status = 'sending'; saveChats();
-      const ok = await uploadAttachmentJob(chat, job, m);
-      if (!ok){
-        m.status = 'queued';
-        m.nextTry = Date.now() + Math.min(45000, 5000 * m.tries);
-      } else {
-        m.status = 'sent'; m.tries = 0; m.queueReason = null; m.nextTry = 0;
-        pendingUploads.delete(m.id);
-      }
-    } else {
-      m.status = 'failed';
-    }
-    saveChats();
-    if (state.activeCode === chat.code) renderMessages();
-  }
-  function pendingCount(){
-    return state.chats.reduce((n, c) => n + (c.messages || []).filter(m => m.mine && m.status === 'queued').length, 0);
-  }
-  function kickOutbox(){ scheduleFlush(200); }
-
-  /* ---------------- 10. Backup ---------------- */
-  function exportBackup(){
-    try {
-      const data = {
-        app: 'ntfy-chat', version: 3, exportedAt: new Date().toISOString(),
-        name: state.name, code: ownCode(), contacts: state.contacts,
-        chats: state.chats
-      };
-      const blob = new Blob([JSON.stringify(data)], { type:'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'ntfy-chat-' + new Date().toISOString().slice(0, 10) + '.json';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => { try { URL.revokeObjectURL(url); } catch(_){} }, 5000);
-      toast('Backup exported');
-    } catch(err){
-      uiAlert('Could not build the backup: ' + ((err && err.message) || 'unknown error'), { title:'Export failed' });
-    }
-  }
-  async function importBackup(file){
-    try {
-      const text = await file.text();
-      const data = JSON.parse(text);
-      if (!data || !Array.isArray(data.chats)) throw new Error('this is not a backup file');
-      const incoming = data.chats.filter(c => c && c.code).map(c => migrateChat(JSON.parse(JSON.stringify(c))));
-      const before = state.chats.reduce((n, c) => n + (c.messages || []).length, 0);
-      state.chats = mergeChatLists(state.chats, incoming);
-      state.chats.forEach(migrateChat);
-      let added = state.chats.reduce((n, c) => n + (c.messages || []).length, 0) - before;
-      if (Array.isArray(data.contacts)){
-        data.contacts.forEach(c => {
-          if (c && c.number && !state.contacts.find(x => x.number === c.number)) state.contacts.push(c);
-        });
-        try { saveContacts(); } catch(_){}
-      }
-      seedSeen();
-      saveChats();
-      renderChatList();
-      renderMessages();
-      subscribeAll();
-      toast('Imported ' + state.chats.length + ' conversation(s)' + (added > 0 ? ', ' + added + ' new message(s)' : ''));
-    } catch(err){
-      uiAlert('That file could not be read as an ntfy Chat backup. ' + ((err && err.message) || ''), { title:'Import failed' });
-    }
-  }
-
-  /* ---------------- 11. Text send with encryption gate ---------------- */
-  async function sendTextPayload(chat, name, text, quote, msg){
-    const keys = await deviceKeys(chat);
-    if (!keys.length){
-      if (!chat.group && e2eSupported() && state.strictEnc){
-        queueMessage(chat, msg, 'key');
-        if (!state.warnedHold){
-          state.warnedHold = true;
-          try {
-            state.warnedHold = false;
-            await uiConfirm(
-              'Waiting for ' + (chat.title || 'the other device') + "'s encryption key. Your message is saved and will send by itself the moment the key arrives.\n\nYou can send it unencrypted instead, but then anyone reading the ntfy topic can see it.",
-              { title:'Held until encrypted', ok:'OK', cancel:'Send unencrypted' }
-            ).then(sendAnyway => { if (!sendAnyway) sendUnencryptedNow(chat, msg); });
-          } catch(_){}
-        }
-        return;
-      }
-      if (quote){
-        const id = await sendControl(chat.code, { t:'m', m: text, q: quote });
-        msg.eventId = id; msg.status = id ? 'sent' : 'failed';
-        if (!id) queueMessage(chat, msg, 'network');
-        saveChats(); rerender();
-      } else {
-        await postText(chat, name + ': ' + text, msg, baseHeaders());
-        if (msg.status === 'failed') queueMessage(chat, msg, 'network');
-      }
-      return;
-    }
-    let entries = null;
-    try { entries = await sealForDevices(chat, { m: text, q: quote || null }); }
-    catch(_){ entries = null; }
-    if (!entries){
-      await postText(chat, name + ': ' + text, msg, baseHeaders());
-      if (msg.status === 'failed') queueMessage(chat, msg, 'network');
-      return;
-    }
-    msg.enc = true;
-    const serialised = JSON.stringify(entries);
-    if (serialised.length <= 1700){
-      const id = await sendControl(chat.code, { t:'e2e', m: entries });
-      msg.eventId = id; msg.status = id ? 'sent' : 'failed';
-      if (!id) queueMessage(chat, msg, 'network');
-      saveChats(); rerender();
-    } else {
-      await postText(chat, name + ': ' + E2E_PREFIX + serialised, msg, baseHeaders());
-      if (msg.status === 'failed') queueMessage(chat, msg, 'network');
-    }
-  }
-  async function sendUnencryptedNow(chat, msg){
-    msg.queueReason = null;
-    msg.status = 'sending';
-    saveChats(); rerender();
-    await postText(chat, (msg.sender || state.name) + ': ' + msg.text, msg, baseHeaders());
-    if (msg.status === 'failed') queueMessage(chat, msg, 'network');
-    saveChats(); rerender();
-  }
-
-  /* ---------------- 12. Incoming text dispatcher ---------------- */
-  function handleIncomingTextPayload(chat, from, base, payload){
-    if (payload.indexOf(VAULT_PREFIX) === 0){
-      const rest = payload.slice(VAULT_PREFIX.length).split('|');
-      if (rest[0] === 't'){
-        const msg = Object.assign({}, base, { sender: from, locked: true, kind:'text', cipher: rest.slice(1).join('|') });
-        deliver(chat, msg);
-        notifyMsg({ sender: from, locked: true });
-        return true;
-      }
-    }
-    if (payload.indexOf(E2E_PREFIX) === 0){
-      deliverSealed(chat, from, base, payload.slice(E2E_PREFIX.length));
-      return true;
-    }
-    if (!payload) return true;
-    const msg = Object.assign({}, base, { sender: from, text: payload, kind:'text' });
-    deliver(chat, msg);
-    notifyMsg(msg);
-    return true;
+  function updateEncBadge(){
+    const badge = $('encBadge');
+    if (!badge) return;
+    const chat = activeChat();
+    let icon = '🔓', tip = 'Not encrypted yet';
+    if (!e2eSupported()){ icon = '⚠️'; tip = 'Encryption unavailable on this page'; }
+    else if (chat && chat.group){ icon = '👥'; tip = 'Group topic'; }
+    else if (chat && chat.peerPub){ icon = '🔒'; tip = 'End-to-end encrypted'; }
+    else if (chat){ icon = '⏳'; tip = 'Waiting for the other device key'; }
+    badge.textContent = icon;
+    badge.title = tip;
   }
 
   /* ================= ROBUST CONNECTION LAYER (SSE + WebSocket fallback) ================= */
@@ -2976,7 +2619,7 @@
       const chat = state.chats.find(c => c.code === code);
       if (!chat) return;
       announceKey(chat, false);
-      if (!peerDevices(chat).length) requestPeerKey(chat);
+      if (!chat.peerPub) requestPeerKey(chat);
     }, 1200);
 
     // Expose close
@@ -3039,25 +2682,21 @@
       case 'tp': { receiveTextPart(chat, from, c, base); return; }
       /* ---- encryption key exchange ---- */
       case 'pk': {
-        if (from === state.name || chat.group || !c.k) return;
-        const verdict = rememberPeerDevice(chat, c.did, c.k, c.n || from);
-        if (verdict === 'new'){
-          chanKeyCache.clear();
-          (chat.messages || []).forEach(m => {
-            if (m.mine && m.status === 'queued' && m.queueReason === 'key'){ m.nextTry = 0; m.tries = 0; }
-          });
-          saveChats(); renderChatList(); updateEncStatus();
-          kickOutbox();                     /* release anything held for this key */
-        } else if (verdict === 'mismatch'){
+        if (from === state.name || chat.group) return;
+        if (c.k && c.k !== chat.peerPub){
+          chat.peerPub = c.k;
+          chat.e2e = 'ready';
+          e2eCache.delete(chat.code);
+          saveChats();
+          renderChatList();
+          if (state.activeCode === chat.code) renderMessages();
           updateEncStatus();
-          warnKeyChange(chat, from);
-          return;                           /* never adopt an unpinned key silently */
         }
         announceKey(chat, false);
         return;
       }
       case 'pkreq': { announceKey(chat, true); return; }
-      case 'e2e': { deliverSealed(chat, from, base, JSON.stringify(c.m || [])); return; }
+      case 'e2e': { deliverSealed(chat, from, base, c.d); return; }
       case 'v_end': { if (typeof handleCallEndSignal === 'function') handleCallEndSignal(chat, from); return; }
     }
     if (changed){ saveChats(); renderChatList(); if (state.activeCode === chat.code) renderMessages(); }
@@ -3112,14 +2751,11 @@
       if (meta && meta.ce){
         msg.enc = true;
         msg.cipherIv = meta.iv || '';
-        msg.cipherKeys = meta.keys || null;
-        msg.mime = meta.m || msg.mime || 'application/octet-stream';
         if (msg.kind === 'image') delete msg.dataUrl;
       }
       deliver(chat, msg);
       if (msg.enc){ hydrateSealedAttachment(chat, msg); return; }
       if (msg.kind === 'image' || msg.kind === 'audio') cacheMedia(chat, msg);
-      cacheRemoteAttachment(chat, msg, att.url);
       notifyMsg(msg);
       return;
     }
@@ -3142,78 +2778,27 @@
     handleIncomingTextPayload(chat, name, base, text);
   }
 
-  /* ---------------- 13. Message retry, badges, key-change warnings ---------------- */
-  function retryFromUi(m){
-    const chat = activeChat();
-    if (!chat || !m || !m.mine) return;
-    if (m.status === 'sent' || m.status === 'received'){ toast('Already sent'); return; }
-    if (m.queueReason === 'key'){
-      uiConfirm('Send this message without encryption? Anyone who can read the ntfy topic could see it.',
-        { title:'Send unencrypted?', ok:'Send now', cancel:'Keep waiting', danger:true })
-        .then(yes => { if (yes) sendUnencryptedNow(chat, m); });
+  /* One place that knows every way a text payload can arrive: sealed with the
+     channel key, Vault-Locked with a passcode, or plain. */
+  function handleIncomingTextPayload(chat, from, base, payload){
+    const text = String(payload == null ? '' : payload);
+    if (text.indexOf(VAULT_PREFIX) === 0){
+      const rest = text.slice(VAULT_PREFIX.length).split('|');
+      if (rest[0] === 't'){
+        const msg = Object.assign({}, base, { sender: from, locked:true, kind:'text', cipher: rest.slice(1).join('|') });
+        deliver(chat, msg);
+        notifyMsg({ sender: from, locked:true });
+        return;
+      }
+    }
+    if (text.indexOf(E2E_PREFIX) === 0){
+      deliverSealed(chat, from, base, text.slice(E2E_PREFIX.length));
       return;
     }
-    m.nextTry = 0;
-    m.tries = m.tries || 0;
-    queueMessage(chat, m, m.queueReason || 'network');
-    kickOutbox();
-    toast('Retrying…');
-  }
-
-  function updateEncBadge(){
-    const badge = $('encBadge');
-    if (!badge) return;
-    const chat = activeChat();
-    let icon = '🔓', tip = 'Not encrypted yet';
-    if (!e2eSupported()){ icon = '⚠️'; tip = 'Encryption unavailable on this page (needs https)'; }
-    else if (chat && chat.group){ icon = '👥'; tip = 'Group topic — shared trust boundary'; }
-    else if (chat && chat.pendingDev){ icon = '❗'; tip = 'The other device changed its key — open Settings'; }
-    else if (chat && peerDevices(chat).length){ icon = '🔒'; tip = 'End-to-end encrypted · key pinned'; }
-    else if (chat){ icon = '⏳'; tip = 'Waiting for the other device key'; }
-    badge.textContent = icon;
-    badge.title = tip;
-  }
-
-  function updateEncStatus(){
-    const el = $('encStatus');
-    const chat = activeChat();
-    if (el){
-      if (!chat) el.textContent = 'Open a conversation to see its key state.';
-      else if (chat.group) el.textContent = 'Groups share one ntfy topic, so there is no pairwise key. The topic is the trust boundary.';
-      else if (!e2eSupported()) el.textContent = 'This page is not a secure context, so the browser will not hand out crypto keys. Open it over https.';
-      else if (chat.pendingDev) el.textContent = '⚠️ The other device published a new key. It stays untrusted until you accept it.';
-      else if (peerDevices(chat).length) el.textContent = 'End-to-end encrypted with ' + peerDevices(chat).length + ' device' +
-        (peerDevices(chat).length > 1 ? 's' : '') + '. Keys are pinned, so a change is flagged instead of adopted silently.';
-      else el.textContent = 'Waiting for the other device. Keys swap automatically the next time it is online here.';
-    }
-    updateEncBadge();
-    refreshStorageRow();
-  }
-
-  function warnKeyChange(chat, from){
-    const p = chat.pendingDev;
-    if (!p) return;
-    uiConfirm(
-      (from || 'The other side') + ' published a different encryption key for the same device.\n\nThat happens after a reinstall, and it also happens if someone is intercepting this chat. New messages from that device stay unreadable here until you decide.',
-      { title:'Encryption key changed', ok:'Accept new key', cancel:'Keep old key', danger:true }
-    ).then(async yes => {
-      updateEncStatus();
-      if (!yes){ toast('Old key kept — their new messages stay unreadable', 4200); return; }
-      acceptPendingDevice(chat);
-      updateEncStatus();
-      renderMessages();
-      const num = await safetyNumberFor(p.k);
-      uiAlert('New key accepted. Verify the safety number with them:\n\n' + (num || 'unavailable') +
-        '\n\nMatching digits on both devices means nothing is in the middle.', { title:'Key accepted' });
-    });
-  }
-
-  async function cacheRemoteAttachment(chat, msg, url){
-    try {
-      const resp = await fetch(url);
-      if (!resp.ok) return;
-      await cacheMediaBlob(chat, msg, await resp.blob());
-    } catch(_){}
+    if (!text) return;
+    const msg = Object.assign({}, base, { sender: from, text, kind:'text' });
+    deliver(chat, msg);
+    notifyMsg(msg);
   }
 
   async function cacheMedia(chat, m){
@@ -3313,6 +2898,7 @@
 
     const msg = { id:newId(), text, sender:name, time:Date.now(), mine:true, status:'sending', kind:'text' };
     if (quote) msg.quote = quote;
+    if (await channelKey(chat)) msg.enc = true;
     chat.messages.push(msg); saveChats(); rerender();
     await sendTextPayload(chat, name, text, quote, msg);
   }
@@ -3456,54 +3042,6 @@
     };
   }
 
-  const pendingUploads = new Map();   // msg id -> job, so a failed upload can resume
-
-  async function uploadAttachmentJob(chat, job, msg){
-    let blob = job.blob;
-    const meta = job.meta;
-    const fileName = job.fileName;
-    let chunkSize = learnedChunkSize() || (blob.size <= 96 * 1024 ? blob.size : CHUNK_START_BYTES);
-    chunkSize = Math.max(16 * 1024, Math.min(chunkSize, Math.max(blob.size, 16 * 1024)));
-
-    for (let attempt = 0; attempt < 4; attempt++){
-      const total = Math.max(1, Math.ceil(blob.size / chunkSize));
-      const fid = 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7) + 'a' + attempt;
-      meta.fid = fid; meta.tp = total;
-      msg.upload = { sent: 0, total };
-      saveChats();
-      if (state.activeCode === chat.code) renderMessages();
-
-      let failure = null;
-      for (let i = 0; i < total; i++){
-        const slice = blob.slice(i * chunkSize, Math.min(blob.size, (i + 1) * chunkSize));
-        const r = await uploadAttachmentPart(chat, slice, meta, i, total,
-          fileName + '.' + String(i + 1).padStart(3, '0') + 'of' + total);
-        if (r.error){ failure = r; break; }
-        if (i === 0){
-          if (r.id){ msg.eventId = r.id; seenIds.add(r.id); }
-          if (r.url && total === 1) msg.attachUrl = r.url;
-        }
-        msg.upload.sent = i + 1;
-        saveChats();
-        if (state.activeCode === chat.code) renderMessages();
-      }
-
-      if (!failure){
-        rememberChunkSize(chunkSize);
-        delete msg.upload;
-        return true;
-      }
-      delete msg.upload;
-      if (failure.tooLarge && chunkSize > CHUNK_MIN_BYTES){
-        chunkSize = Math.max(CHUNK_MIN_BYTES, Math.floor(chunkSize / 2));
-        toast('ntfy refused that size (413) — retrying in ' + (humanSize(chunkSize) || 'smaller') + ' chunks', 3200);
-        continue;
-      }
-      return false;
-    }
-    return false;
-  }
-
   async function sendAttachment(opts){
     const chat = activeChat(); if (!chat || !opts || !opts.blob) return;
     if (opts.blob.size > CHUNK_MAX_FILE){ toast('File too large (max 25 MB)'); return; }
@@ -3529,43 +3067,72 @@
         const pass = await askPasscode({ title:'Lock ' + (opts.kind === 'audio' ? 'voice note' : opts.kind),
           desc:'Set a passcode.', ok:'Lock & send' });
         if (pass === null){ chat.messages = chat.messages.filter(x => x !== msg); saveChats(); rerender(); return; }
-        const enc = await vaultEncryptBytes(pass, await opts.blob.arrayBuffer());
+        const buf = await opts.blob.arrayBuffer();
+        const enc = await vaultEncryptBytes(pass, buf);
         meta.l = 1; meta.s = enc.salt; meta.i = enc.iv;
         blob = new Blob([enc.ct], { type:'application/octet-stream' });
         fileName = 'locked.bin';
         msg.locked = true;
       }
 
-      if (!msg.locked){
-        const sealed = await sealAttachmentFor(chat, blob);
-        if (sealed){
-          blob = sealed.blob;
+      const chanKey = await channelKey(chat);
+      if (chanKey && !msg.locked){
+        try {
+          const iv = crypto.getRandomValues(new Uint8Array(12));
+          const ct = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, chanKey, await blob.arrayBuffer());
+          blob = new Blob([ct], { type:'application/octet-stream' });
           meta.ce = 1;
-          meta.iv = sealed.meta.iv;
-          meta.keys = sealed.meta.keys;
+          meta.iv = bufToB64(iv);
           msg.enc = true;
-          msg.cipherIv = sealed.meta.iv;
-          msg.cipherKeys = sealed.meta.keys;
-        } else if (!chat.group && e2eSupported() && state.strictEnc){
-          const yes = await uiConfirm(
-            'This chat has no encryption key yet (' + (chat.title || 'the other device') + ' has not sent one).\n\nSend this file unencrypted? Anyone reading the ntfy topic could see it.',
-            { title:'Send unencrypted?', ok:'Send unencrypted', cancel:'Don’t send', danger:true });
-          if (!yes){
-            chat.messages = chat.messages.filter(x => x !== msg);
-            saveChats(); rerender();
-            return;
-          }
-        }
+          msg.cipherIv = meta.iv;
+        } catch(_){}
       }
 
-      const job = { chatCode: chat.code, blob, meta, fileName, kind: opts.kind };
-      pendingUploads.set(msg.id, job);
-      const ok = await uploadAttachmentJob(chat, job, msg);
-      if (ok){ pendingUploads.delete(msg.id); msg.status = 'sent'; msg.tries = 0; }
-      else { queueMessage(chat, msg, 'network'); }
-    } catch(err){
+      let chunkSize = learnedChunkSize() || (blob.size <= 96 * 1024 ? blob.size : CHUNK_START_BYTES);
+      chunkSize = Math.max(16 * 1024, Math.min(chunkSize, Math.max(blob.size, 16 * 1024)));
+      let attempt = 0, done = false, lastError = null;
+
+      while (!done && attempt < 5){
+        const total = Math.max(1, Math.ceil(blob.size / chunkSize));
+        const fid = 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7) + 'a' + attempt;
+        meta.fid = fid; meta.tp = total;
+        msg.upload = { sent: 0, total };
+        saveChats();
+        if (state.activeCode === chat.code) renderMessages();
+
+        let failure = null;
+        for (let i = 0; i < total; i++){
+          const slice = blob.slice(i * chunkSize, Math.min(blob.size, (i + 1) * chunkSize));
+          const r = await uploadAttachmentPart(chat, slice, meta, i, total,
+            fileName + '.' + String(i + 1).padStart(3, '0') + 'of' + total);
+          if (r.error){ failure = r; break; }
+          if (i === 0){
+            if (r.id){ msg.eventId = r.id; seenIds.add(r.id); }
+            if (r.url && total === 1) msg.attachUrl = r.url;
+          }
+          msg.upload.sent = i + 1;
+          saveChats();
+          if (state.activeCode === chat.code) renderMessages();
+        }
+
+        if (!failure){ done = true; break; }
+        lastError = failure.error || 'upload failed';
+        attempt++;
+        if (failure.tooLarge && chunkSize > CHUNK_MIN_BYTES){
+          chunkSize = Math.max(CHUNK_MIN_BYTES, Math.floor(chunkSize / 2));
+          toast('ntfy refused that size (413) — retrying in ' + (humanSize(chunkSize) || 'smaller') + ' chunks', 3200);
+          continue;
+        }
+        await new Promise(res => setTimeout(res, 700 * attempt));
+      }
+
+      if (!done) throw new Error(lastError || 'upload failed');
+      rememberChunkSize(chunkSize);
+      msg.status = 'sent';
       delete msg.upload;
+    } catch(err){
       msg.status = 'failed';
+      delete msg.upload;
       toast('Send failed: ' + ((err && err.message) || 'unknown error'), 5000);
     }
     saveChats(); rerender();
@@ -3585,7 +3152,7 @@
         locked: !!meta.l, status: 'receiving', upload: { sent: 0, total }
       });
       if (meta.l) msg.cipher = { salt: meta.s, iv: meta.i };
-      if (meta.ce){ msg.enc = true; msg.cipherIv = meta.iv || ''; msg.cipherKeys = meta.keys || null; }
+      if (meta.ce){ msg.enc = true; msg.cipherIv = meta.iv || ''; }
       deliver(chat, msg);
       entry = { msg, chatCode: chat.code, parts: new Map(), total, started: Date.now() };
       PARTS.set(meta.fid, entry);
@@ -3613,8 +3180,10 @@
         blobs.push(await resp.blob());
       }
       let blob = new Blob(blobs, { type: msg.mime || 'application/octet-stream' });
-      const srcChat = state.chats.find(c => c.code === entry.chatCode);
-      if (msg.enc) blob = await openAttachmentFor(srcChat, msg, blob);
+      if (msg.enc){
+        const srcChat = state.chats.find(c => c.code === entry.chatCode);
+        blob = await openSealedAttachment(srcChat, msg, blob);
+      }
       msg.size = blob.size;
       delete msg.upload;
       msg.status = 'received';
@@ -3630,7 +3199,6 @@
         msg.attachUrl = URL.createObjectURL(blob);
       }
       msg.receivedAt = Date.now();
-      if (!msg.locked) cacheMediaBlob(srcChat, msg, blob);
       saveChats();
       if (state.activeCode === entry.chatCode) renderMessages();
       notifyMsg(msg);
@@ -3733,12 +3301,16 @@
     navigator.geolocation.getCurrentPosition(async pos => {
       const { latitude:lat, longitude:lng, accuracy:acc } = pos.coords;
       const chat = activeChat(); if (!chat) return;
-      let entries = null;
-      try { entries = await sealForDevices(chat, { k:'loc', lat, lng, acc }); } catch(_){ entries = null; }
+      const key = await channelKey(chat);
       let id = null;
-      if (entries) id = await sendControl(chat.code, { t:'e2e', m: entries });
+      if (key){
+        try {
+          const sealed = await sealValue(key, { k:'loc', lat, lng, acc });
+          id = await sendControl(chat.code, { t:'e2e', d: sealed });
+        } catch(_){ id = null; }
+      }
       if (!id) id = await sendControl(chat.code, { t:'l', lat, lng, acc });
-      chat.messages.push({ id:newId(), eventId:id, kind:'location', lat, lng, acc, enc: !!entries, sender:state.name, time:Date.now(), mine:true, status: id ? 'sent' : 'failed' });
+      chat.messages.push({ id:newId(), eventId:id, kind:'location', lat, lng, acc, enc: !!id && !!key, sender:state.name, time:Date.now(), mine:true, status: id ? 'sent' : 'failed' });
       saveChats(); rerender();
     }, () => toast('Location permission denied'), { enableHighAccuracy:true, timeout:10000 });
   }
@@ -3839,12 +3411,7 @@
     renderChatList();
     opts_forceBottom = true; renderMessages(); opts_forceBottom = false;
     updateEncStatus();
-    if (c){
-      announceKey(c, false);
-      if (!peerDevices(c).length) requestPeerKey(c);
-      hydrateChatMedia(c);
-    }
-    flushOutbox();
+    if (c){ announceKey(c, false); if (!c.peerPub) requestPeerKey(c); }
     $('sidebar').classList.remove('open');
     $('sidebarBackdrop').classList.remove('show');
   }
@@ -4836,9 +4403,9 @@
     if (pass && vaultAvailable()){
       try { callKey = await callDeriveKey(pass, callCid); callKeyKind = 'pass'; } catch(_){}
     } else {
-      const devs = await deviceKeys(chat);
-      if (devs.length === 1){
-        callKey = devs[0].key;
+      const chanKey = await channelKey(chat);
+      if (chanKey){
+        callKey = chanKey;
         callKeyKind = 'e2e';
       } else if (window.crypto && crypto.subtle){
         try {
@@ -4950,9 +4517,9 @@
     (async () => {
       try {
         if (!callActive || callIncomingEncrypted || callKey) return;
-        const devs = await deviceKeys(chat);
+        const chanKey = await channelKey(chat);
         if (!callActive || callKey) return;
-        if (devs.length === 1){ callKey = devs[0].key; callKeyKind = 'e2e'; return; }
+        if (chanKey){ callKey = chanKey; callKeyKind = 'e2e'; return; }
         if (offeredKey && window.crypto && crypto.subtle){
           callKey = await callImportRawKey(offeredKey);
           callKeyKind = 'session';
@@ -5001,8 +4568,8 @@
       try { callKey = await callDeriveKey(pass, callCid || 'call'); callKeyKind = 'pass'; }
       catch(_){ callKey = null; callKeyKind = 'none'; }
     } else if (!callKey){
-      const devs = await deviceKeys(chat);
-      if (devs.length === 1){ callKey = devs[0].key; callKeyKind = 'e2e'; }
+      const chanKey = await channelKey(chat);
+      if (chanKey){ callKey = chanKey; callKeyKind = 'e2e'; }
     }
 
     await sendControl(chat.code, { t:'v_accept' }, true);
@@ -5122,32 +4689,7 @@
   if (callDataToggleBtn) callDataToggleBtn.addEventListener('click', () => $('callDataDetails').classList.toggle('show'));
 
   // Header & Modals
-  $('settingsBtn').addEventListener('click', () => {
-    updateEncStatus();
-    const st = $('strictToggle'); if (st) st.checked = state.strictEnc;
-    const ak = $('acceptKeyBtn');
-    if (ak){
-      const chat = activeChat();
-      const has = !!(chat && chat.pendingDev);
-      ak.style.display = has ? 'inline-block' : 'none';
-      ak.textContent = has ? 'Accept new key from ' + (chat.pendingDev.n || 'the other device') : 'Accept new device key…';
-    }
-    openModal('settingsModal');
-  });
-
-  $('strictToggle').addEventListener('change', () => {
-    state.strictEnc = $('strictToggle').checked;
-    localStorage.setItem('ntfy_strict', state.strictEnc ? '1' : '0');
-    toast(state.strictEnc ? 'Messages will wait for a key' : 'Messages may be sent unencrypted');
-  });
-
-  $('cacheClearBtn').addEventListener('click', clearMediaCache);
-
-  $('acceptKeyBtn').addEventListener('click', () => {
-    const chat = activeChat();
-    if (!chat || !chat.pendingDev){ toast('No pending key'); return; }
-    warnKeyChange(chat, chat.pendingDev.n || 'The other device');
-  });
+  $('settingsBtn').addEventListener('click', () => { updateEncStatus(); openModal('settingsModal'); });
   $('settingsClose').addEventListener('click', () => closeModal('settingsModal'));
   $('helpBtn').addEventListener('click', () => $('helpOverlay').classList.add('show'));
   $('helpClose').addEventListener('click', () => $('helpOverlay').classList.remove('show'));
@@ -5214,20 +4756,15 @@
     const chat = activeChat();
     if (!chat){ await uiAlert('Open a conversation first.', { title:'Safety number' }); return; }
     if (chat.group){ await uiAlert('Groups share one ntfy topic, so there is no pairwise safety number.', { title:'Safety number' }); return; }
-    const devs = peerDevices(chat);
-    if (!devs.length){
+    if (!chat.peerPub){
       await uiAlert('The other device has not published its key yet. Both devices need to be online in this chat at least once.',
         { title:'Safety number' });
       requestPeerKey(chat);
       return;
     }
-    const lines = [];
-    for (const dev of devs.slice(0, 4)){
-      const num = await safetyNumberFor(dev.k);
-      lines.push((dev.n || 'device') + ' (' + dev.did + ')\n' + (num || 'fingerprint unavailable'));
-    }
-    await uiAlert(lines.join('\n\n') +
-      '\n\nRead these digits to the other person, or compare in person. Matching digits on both devices means nobody is sitting in the middle of this chat.',
+    const num = await safetyNumber(chat);
+    await uiAlert((num ? num : 'Could not compute a fingerprint.') +
+      '\n\nRead these digits to the other person (or compare in person). If they match on both devices, nobody is sitting in the middle of this chat.',
       { title:'Safety number', ok:'Close' });
   });
 
@@ -5504,19 +5041,6 @@
   seedSeen();
   restoreFromIdb();
   if (e2eSupported()) loadIdKeyPair().catch(() => {});
-  updateEncStatus();
-  updateEncBadge();
-  setTimeout(() => { flushOutbox(); refreshStorageRow(); }, 1200);
-
-  /* Flush the outbox as soon as the link comes back, and keep retrying while
-     the tab is visible so a held message does not sit there forever. */
-  window.addEventListener('online', () => { subscribeAll(); scheduleFlush(400); toast('Back online — flushing queued messages'); });
-  window.addEventListener('offline', () => { toast('Offline — messages will queue'); });
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible'){
-      if (navigator.onLine){ subscribeAll(); scheduleFlush(600); }
-    }
-  });
 
   const joinedFlag = localStorage.getItem('ntfy_joined') === '1';
   const hasRealChats = state.chats.some(c => !c.own) || state.chats.some(c => c.messages.length);
