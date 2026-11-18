@@ -244,7 +244,7 @@
       room = code; online = false; notice('');
       updateConnection('Connecting to ' + room + '…');
       render();
-      const stream = new EventSource(url() + '/sse?since=now');
+      const stream = new EventSource(url() + '/sse');
       source = stream;
       stream.onopen = () => { if (source !== stream) return; online = true; updateConnection('Listening on ' + room, 'online'); render(); };
       stream.onerror = () => { if (source !== stream) return; online = false; updateConnection('Connection lost · reconnecting…', 'error'); render(); };
