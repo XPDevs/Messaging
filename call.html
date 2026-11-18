@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#10151f">
+  <meta name="application-name" content="ntfy Calls">
+  <link rel="icon" href="favicon.ico">
+  <link rel="manifest" href="manifest.json">
+  <title>ntfy Calls</title>
+  <style>
+    :root{color-scheme:dark;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#10151f;color:#f5f7fb}
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:24px;background:radial-gradient(ellipse at 50% 0,#24344b 0,#10151f 57%)}
+    button,input{font:inherit}button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.45}button:focus-visible,input:focus-visible{outline:3px solid #8cbcff;outline-offset:3px}
+    .card{width:min(100%,440px);padding:32px;border:1px solid #ffffff16;border-radius:28px;background:#151d2a;box-shadow:0 24px 80px #0005}
+    .brand{display:flex;align-items:center;gap:10px;color:#b6c7de;font-size:13px;font-weight:700;letter-spacing:.09em;text-transform:uppercase}
+    .brand-icon{display:grid;place-items:center;width:32px;height:32px;border-radius:10px;background:#2b72db;color:#fff;font-size:16px}
+    h1{font-size:clamp(26px,5vw,34px);letter-spacing:-.035em;margin:28px 0 8px;line-height:1.15}
+    .intro,.hint{color:#9cacc1;line-height:1.55;font-size:14px}.intro{margin:0 0 24px}
+    label{display:block;font-size:12px;color:#b8c7da;font-weight:700;margin-bottom:8px}
+    .room-row{display:flex;gap:8px}input[type=text]{width:100%;min-width:0;border:1px solid #39475b;border-radius:12px;background:#0f1723;color:#fff;padding:12px 14px;font-size:16px;letter-spacing:.1em}
+    button{border:0;border-radius:12px;font-weight:700;transition:background .15s,transform .15s}button:not(:disabled):active{transform:scale(.98)}
+    .secondary{padding:12px 15px;background:#2c3b50;color:#ecf3ff;white-space:nowrap}.secondary:hover:not(:disabled){background:#3a4b63}
+    .hint{font-size:12px;margin:10px 0 0}.status{display:flex;align-items:center;gap:8px;color:#a7b7c9;font-size:13px;margin:20px 0 0;min-height:20px}.dot{width:8px;height:8px;flex:none;border-radius:50%;background:#778698}.dot.online{background:#57d28c}.dot.error{background:#ff8a85}
+    .call-panel{margin-top:26px;padding-top:24px;border-top:1px solid #ffffff12;text-align:center}
+    .avatar{width:92px;height:92px;border-radius:50%;display:grid;place-items:center;margin:0 auto 16px;background:linear-gradient(135deg,#4169a9,#233b5d);box-shadow:0 0 0 9px #ffffff08;color:#edf5ff}
+    .avatar svg{width:34px;height:34px}.call-title{margin:0;font-size:19px;font-weight:700}.call-state{min-height:22px;margin:6px 0 0;color:#a7b7c9;font-size:14px}.timer{font-variant-numeric:tabular-nums;color:#83c1ff;font-size:14px;margin:7px 0 0;min-height:20px}
+    .controls{display:flex;justify-content:center;gap:14px;margin-top:22px;flex-wrap:wrap}.control{display:flex;flex-direction:column;align-items:center;gap:7px;border:0;background:none;color:#c5d2e2;padding:0;font-size:12px;font-weight:600;min-width:66px}.control-icon{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:#2a384b;color:#eef5ff}.control[aria-pressed=true] .control-icon{background:#e7eef9;color:#192536}.control svg{width:21px;height:21px}
+    .call-actions{display:flex;gap:10px;justify-content:center;margin-top:24px}.primary,.danger,.accept{padding:13px 24px;min-width:130px;color:white}.primary{background:#2d78e4}.primary:hover:not(:disabled){background:#3988f8}.danger{background:#c94650}.danger:hover{background:#df5360}.accept{background:#268f5a}.accept:hover{background:#30a66b}
+    .settings{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:26px;color:#a7b7c9;font-size:13px}.settings label{margin:0;font-size:13px;font-weight:500;cursor:pointer}.settings input{accent-color:#4c9aff;width:16px;height:16px}
+    .privacy{font-size:11px;line-height:1.5;color:#8191a6;text-align:center;margin:18px 0 0}.notice{min-height:20px;color:#f6bf8c;font-size:13px;text-align:center;margin:12px 0 0;line-height:1.4}.hidden{display:none!important}
+    @media(max-width:480px){body{padding:12px}.card{padding:24px 20px}h1{margin-top:24px}}
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="brand"><span class="brand-icon" aria-hidden="true">✦</span> ntfy Calls</div>
+    <h1>Just you, and a call.</h1>
+    <p class="intro">Share a call code, then connect and talk. No messages, no distractions.</p>
+    <label for="roomCode">CALL CODE</label>
+    <div class="room-row">
+      <input id="roomCode" type="text" inputmode="numeric" maxlength="11" autocomplete="off" placeholder="11-digit code">
+      <button class="secondary" id="joinBtn" type="button">Join</button>
+    </div>
+    <p class="hint">Both people must join the same code. <button id="generateBtn" type="button" style="padding:0;background:none;color:#8cbcff;font-size:inherit">Generate a code</button></p>
+    <div class="status" role="status"><span class="dot" id="connectionDot"></span><span id="connectionText">Join a code to get started</span></div>
+
+    <section class="call-panel" aria-label="Voice call">
+      <div class="avatar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72l.45 2.7a2 2 0 0 1-.57 1.73L7.09 9.91a16 16 0 0 0 6 6l1.76-1.76a2 2 0 0 1 1.73-.57l2.7.45A2 2 0 0 1 22 16.92z"/></svg></div>
+      <h2 class="call-title" id="callTitle">Ready when you are</h2>
+      <p class="call-state" id="callState">Join a code to make or receive a call</p>
+      <p class="timer" id="callTimer" aria-label="Call duration"></p>
+      <div class="controls">
+        <button class="control" id="muteBtn" type="button" aria-pressed="false" disabled><span class="control-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg></span><span>Mute mic</span></button>
+        <button class="control" id="speakerBtn" type="button" aria-pressed="false" disabled><span class="control-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4zM15 9a5 5 0 0 1 0 6M18 5a10 10 0 0 1 0 14"/></svg></span><span>Mute audio</span></button>
+      </div>
+      <div class="call-actions">
+        <button class="primary" id="callBtn" type="button" disabled>Start call</button>
+        <button class="accept hidden" id="acceptBtn" type="button">Answer</button>
+        <button class="danger hidden" id="endBtn" type="button">End call</button>
+      </div>
+    </section>
+    <div class="settings"><input type="checkbox" id="ringToggle" checked><label for="ringToggle">Play ringtone</label></div>
+    <p class="notice" id="notice" role="status"></p>
+    <p class="privacy">Calls use ntfy.sh. Anyone with the code can listen; use a code only with people you trust. ntfy rate limits can interrupt calls.</p>
+  </main>
+  <audio id="ringtone" src="ringtone.mp3" loop preload="auto"></audio>
+  <script>
+  (() => {
+    'use strict';
+    const $ = id => document.getElementById(id);
+    const RATE = 8000, FRAME = 160, PACKET = 1920, QUEUE_MAX = 6;
+    const clientId = 'call-' + (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2));
+    let room = '', source = null, online = false, phase = 'idle', session = null;
+    let audio = null, mic = null, capture = null, processor = null, sink = null, output = null;
+    let muted = false, speakerMuted = false, listenOnly = false, peerMuted = false;
+    let pieces = [], pieceBytes = 0, queue = [], sending = false, txSeq = 0;
+    let rxSeq = null, rxQueue = new Map(), rxTimer = null, playHead = 0;
+    let ringTimeout = null, timer = null, heartbeat = null, watchdog = null, startedAt = 0, lastPeer = 0;
+    let savedRingtone = true;
+    try { savedRingtone = localStorage.getItem('ntfy_ring') !== '0'; } catch (_) {}
+    $('ringToggle').checked = savedRingtone;
+
+    function updateConnection(text, kind){
+      $('connectionText').textContent = text;
+      $('connectionDot').className = 'dot' + (kind ? ' ' + kind : '');
+      $('callBtn').disabled = !online || phase !== 'idle';
+    }
+    function notice(text){ $('notice').textContent = text || ''; }
+    function render(){
+      const active = phase !== 'idle';
+      $('roomCode').disabled = active;
+      $('joinBtn').disabled = active;
+      $('generateBtn').disabled = active;
+      $('callBtn').classList.toggle('hidden', active);
+      $('callBtn').disabled = !online || active;
+      $('acceptBtn').classList.toggle('hidden', phase !== 'incoming');
+      $('endBtn').classList.toggle('hidden', !active);
+      $('endBtn').textContent = phase === 'incoming' ? 'Decline' : 'End call';
+      $('muteBtn').disabled = phase !== 'connected' || listenOnly;
+      $('speakerBtn').disabled = phase !== 'connected';
+      $('muteBtn').setAttribute('aria-pressed', String(muted));
+      $('speakerBtn').setAttribute('aria-pressed', String(speakerMuted));
+      $('callTitle').textContent = phase === 'incoming' ? 'Incoming call' : phase === 'outgoing' ? 'Calling…' : phase === 'connected' ? 'On a call' : 'Ready when you are';
+      $('callState').textContent = phase === 'incoming' ? 'Someone is calling on this code' : phase === 'outgoing' ? 'Waiting for an answer' : phase === 'connected' ? (listenOnly ? 'Listen only · microphone unavailable' : peerMuted ? 'The other person is muted' : 'Connected') : (online ? 'You are ready to call or receive a call' : 'Join a code to make or receive a call');
+      if (phase !== 'connected') $('callTimer').textContent = '';
+    }
+    function stopRing(){ const r = $('ringtone'); r.pause(); r.currentTime = 0; }
+    function startRing(){
+      stopRing();
+      if ($('ringToggle').checked){
+        const play = $('ringtone').play();
+        if (play && play.catch) play.catch(() => notice('Tap Answer to join; your browser blocked the ringtone.'));
+      }
+    }
+    function url(){ return 'https://ntfy.sh/' + encodeURIComponent(room); }
+    async function signal(payload){
+      if (!room) return false;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12000);
+      try {
+        const response = await fetch(url() + '?cache=no&title=' + encodeURIComponent(clientId), {
+          method:'POST', body:'Caller: @@ntfyJ#' + JSON.stringify(payload), signal:controller.signal
+        });
+        if (!response.ok) throw new Error('ntfy returned HTTP ' + response.status);
+        return true;
+      } catch (err){
+        if (payload.t !== 'v_audio' && payload.t !== 'v_keep') notice('Could not send call signal: ' + (err.name === 'AbortError' ? 'request timed out' : err.message));
+        return false;
+      } finally { clearTimeout(timeout); }
+    }
+    function join(){
+      if (phase !== 'idle') return;
+      const code = $('roomCode').value.replace(/\D/g, '');
+      if (!/^\d{11}$/.test(code)){ notice('Enter an 11-digit call code.'); return; }
+      if (!/^https?:$/.test(location.protocol)){ notice('Open this app on HTTPS or localhost to use calls.'); return; }
+      if (source) source.close();
+      room = code; online = false; notice('');
+      updateConnection('Connecting to ' + room + '…');
+      render();
+      const stream = new EventSource(url() + '/sse?since=now');
+      source = stream;
+      stream.onopen = () => { if (source !== stream) return; online = true; updateConnection('Listening on ' + room, 'online'); render(); };
+      stream.onerror = () => { if (source !== stream) return; online = false; updateConnection('Connection lost · reconnecting…', 'error'); render(); };
+      stream.onmessage = event => {
+        if (source !== stream) return;
+        try {
+          const data = JSON.parse(event.data);
+          if (data.event !== 'message' || data.title === clientId || typeof data.message !== 'string') return;
+          const text = data.message.slice(data.message.indexOf(':') + 1).trim();
+          let payload;
+          if (text.startsWith('@@ntfyJ#')) payload = JSON.parse(text.slice(8));
+          else if (text.startsWith('@@ntfy#')) payload = JSON.parse(new TextDecoder().decode(fromB64(text.slice(7))));
+          if (payload) handleSignal(payload, data.title || '');
+        } catch (_) { /* Ignore unrelated topic events. */ }
+      };
+    }
+    function randomCode(){
+      const values = new Uint8Array(11); crypto.getRandomValues(values);
+      return Array.from(values, (v, i) => String(i === 0 ? 1 + v % 9 : v % 10)).join('');
+    }
+    function context(){
+      const Audio = window.AudioContext || window.webkitAudioContext;
+      if (!Audio) throw new Error('Web Audio is unavailable in this browser');
+      if (!audio || audio.state === 'closed') audio = new Audio();
+      return audio;
+    }
+    async function prepareMic(expected){
+      listenOnly = false;
+      try {
+        const ctx = context();
+        if (ctx.state === 'suspended') await ctx.resume();
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('Microphone access is unavailable');
+        let stream;
+        try { stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}}); }
+        catch (err){ if (err.name !== 'OverconstrainedError') throw err; stream = await navigator.mediaDevices.getUserMedia({audio:true}); }
+        if (session !== expected){ stream.getTracks().forEach(track => track.stop()); return false; }
+        mic = stream;
+      } catch (err){
+        if (session !== expected) return false;
+        listenOnly = true; muted = true;
+        notice('Microphone unavailable. You can listen, but the other person cannot hear you.');
+      }
+      return session === expected;
+    }
+    function toB64(bytes){ let s = ''; for (const b of bytes) s += String.fromCharCode(b); return btoa(s); }
+    function fromB64(s){ const bin = atob(s); return Uint8Array.from(bin, c => c.charCodeAt(0)); }
+    async function makeKey(){
+      if (!window.crypto || !crypto.subtle) throw new Error('Encryption requires HTTPS or localhost');
+      const raw = crypto.getRandomValues(new Uint8Array(32));
+      return {key:await crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt','decrypt']), raw:toB64(raw)};
+    }
+    async function importKey(raw){ return crypto.subtle.importKey('raw', fromB64(raw), 'AES-GCM', false, ['encrypt','decrypt']); }
+    async function encrypt(key, bytes){ const iv = crypto.getRandomValues(new Uint8Array(12)); const encrypted = await crypto.subtle.encrypt({name:'AES-GCM',iv}, key, bytes); return toB64(iv) + '.' + toB64(new Uint8Array(encrypted)); }
+    async function decrypt(key, text){ const parts = text.split('.'); if (parts.length !== 2) throw new Error('Invalid audio'); return new Uint8Array(await crypto.subtle.decrypt({name:'AES-GCM',iv:fromB64(parts[0])}, key, fromB64(parts[1]))); }
+    async function startCall(){
+      if (!online || phase !== 'idle') return;
+      notice(''); phase = 'outgoing'; session = {cid: 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2,8), key:null, peer:null};
+      const current = session; render();
+      if (!await prepareMic(current)) return;
+      try {
+        const result = await makeKey();
+        if (session !== current) return;
+        current.key = result.key;
+        startRing();
+        const sent = await signal({t:'v_offer',v:2,cid:current.cid,pass:false,k:result.raw,e2e:0,nm:'Caller'});
+        if (session !== current) return;
+        if (!sent){ endCall(false); return; }
+        ringTimeout = setTimeout(() => { if (session === current && phase === 'outgoing'){ endCall(true); notice('No answer.'); } }, 45000);
+      } catch (err){ if (session === current){ endCall(false); notice(err.message); } }
+    }
+    async function answerCall(){
+      if (phase !== 'incoming' || !session) return;
+      const current = session; $('acceptBtn').disabled = true;
+      try {
+        if (!await prepareMic(current)) return;
+        if (!current.key) current.key = await importKey(current.rawKey);
+        if (session !== current) return;
+        if (!await signal({t:'v_accept',cid:current.cid})){ if (session === current) endCall(false); return; }
+        if (session === current) connected();
+      } catch (err){ if (session === current){ endCall(false); notice('Could not answer: ' + err.message); } }
+      finally { $('acceptBtn').disabled = false; }
+    }
+    function handleSignal(payload, sender){
+      if (payload.t === 'v_offer'){
+        if (phase !== 'idle'){ signal({t:'v_busy',cid:payload.cid}); return; }
+        if (!payload.k || payload.pass || payload.e2e){ notice('This caller uses an unsupported call encryption mode.'); signal({t:'v_reject',cid:payload.cid}); return; }
+        session = {cid:payload.cid || '',rawKey:payload.k,key:null,peer:sender}; phase = 'incoming'; notice(''); render(); startRing();
+        const current = session;
+        ringTimeout = setTimeout(() => { if (session === current && phase === 'incoming'){ endCall(false); notice('Missed call.'); } }, 45000);
+        return;
+      }
+      if (!session || (payload.cid && payload.cid !== session.cid) || (session.peer && sender && sender !== session.peer)) return;
+      if (payload.t === 'v_accept' && phase === 'outgoing'){ session.peer = sender; connected(); }
+      else if (payload.t === 'v_reject' || payload.t === 'v_busy' || payload.t === 'v_end'){ endCall(false); notice(payload.t === 'v_busy' || payload.busy ? 'The other person is busy.' : 'The call ended.'); }
+      else if (phase === 'connected'){
+        if (payload.t === 'v_audio') receiveAudio(payload, session);
+        else if (payload.t === 'v_keep') lastPeer = Date.now();
+        else if (payload.t === 'v_mute'){ lastPeer = Date.now(); peerMuted = !!payload.on; render(); }
+      }
+    }
+    function connected(){
+      if (!session || phase === 'connected') return;
+      phase = 'connected'; stopRing(); clearTimeout(ringTimeout); ringTimeout = null;
+      startedAt = lastPeer = Date.now(); render(); updateTimer();
+      timer = setInterval(updateTimer, 1000);
+      heartbeat = setInterval(() => { if (session && phase === 'connected') signal({t:'v_keep',cid:session.cid}); }, 12000);
+      watchdog = setInterval(() => { if (session && phase === 'connected' && Date.now() - lastPeer > 60000){ endCall(false); notice('Call ended: connection to the other person was lost.'); } }, 5000);
+      signal({t:'v_mute',cid:session.cid,on:muted ? 1 : 0,nom:listenOnly ? 1 : 0});
+      if (!listenOnly){ try { startCapture(); } catch (err){ listenOnly = true; muted = true; notice('Microphone capture failed. This call is listen only.'); signal({t:'v_mute',cid:session.cid,on:1,nom:1}); render(); } }
+    }
+    function updateTimer(){ const seconds = Math.floor((Date.now() - startedAt) / 1000); $('callTimer').textContent = String(Math.floor(seconds / 60)).padStart(2,'0') + ':' + String(seconds % 60).padStart(2,'0'); }
+    function endCall(send){
+      if (!session) return;
+      const current = session, oldPhase = phase;
+      session = null; phase = 'idle';
+      if (send) signal({t:oldPhase === 'connected' ? 'v_end' : 'v_reject',cid:current.cid});
+      stopRing(); clearTimeout(ringTimeout); clearTimeout(rxTimer); clearInterval(timer); clearInterval(heartbeat); clearInterval(watchdog);
+      ringTimeout = rxTimer = timer = heartbeat = watchdog = null;
+      if (processor){ processor.onaudioprocess = null; processor.disconnect(); processor = null; }
+      if (capture){ capture.disconnect(); capture = null; }
+      if (sink){ sink.disconnect(); sink = null; }
+      if (output){ output.disconnect(); output = null; }
+      if (mic){ mic.getTracks().forEach(track => track.stop()); mic = null; }
+      pieces = []; pieceBytes = 0; queue = []; txSeq = 0; rxSeq = null; rxQueue.clear(); playHead = 0;
+      muted = speakerMuted = listenOnly = peerMuted = false; render();
+    }
+    function encode(sample){
+      let sign = 0; if (sample < 0){ sign = 128; sample = -sample; }
+      sample = Math.min(32635, sample) + 132;
+      let exponent = 7; for (let mask = 0x4000; !(sample & mask) && exponent > 0; exponent--, mask >>= 1) {}
+      return (~(sign | (exponent << 4) | ((sample >> (exponent + 3)) & 15))) & 255;
+    }
+    function decode(byte){ const u = (~byte) & 255; let sample = ((u & 15) << 3) + 132; sample <<= (u & 112) >> 4; return ((u & 128) ? 132 - sample : sample - 132) / 32768; }
+    function startCapture(){
+      const ctx = context(); capture = ctx.createMediaStreamSource(mic); processor = ctx.createScriptProcessor(2048,1,1); sink = ctx.createGain(); sink.gain.value = 0;
+      let phaseOffset = 0, frame = new Uint8Array(FRAME), fill = 0;
+      processor.onaudioprocess = event => {
+        if (phase !== 'connected' || muted) { fill = 0; return; }
+        const input = event.inputBuffer.getChannelData(0), ratio = ctx.sampleRate / RATE;
+        let i = phaseOffset;
+        while (i < input.length){
+          frame[fill++] = encode(Math.round(Math.max(-1,Math.min(1,input[Math.floor(i)])) * 32767));
+          if (fill === FRAME){ pieces.push(frame); pieceBytes += frame.length; frame = new Uint8Array(FRAME); fill = 0; if (pieceBytes >= PACKET) flush(); }
+          i += ratio;
+        }
+        phaseOffset = i - input.length;
+      };
+      capture.connect(processor); processor.connect(sink); sink.connect(ctx.destination);
+    }
+    function flush(){
+      const packet = new Uint8Array(pieceBytes); let offset = 0;
+      for (const part of pieces){ packet.set(part,offset); offset += part.length; }
+      pieces = []; pieceBytes = 0; queue.push(packet);
+      if (queue.length > QUEUE_MAX) queue.shift();
+      pump();
+    }
+    async function pump(){
+      if (sending) return;
+      sending = true;
+      try {
+        while (queue.length && session && phase === 'connected' && !muted){
+          const current = session, bytes = queue.shift(), seq = ++txSeq;
+          try {
+            const data = await encrypt(current.key,bytes);
+            if (session !== current || phase !== 'connected' || muted) break;
+            const ok = await signal({t:'v_audio',cid:current.cid,seq,ms:Math.round(bytes.length/RATE*1000),e:1,d:data});
+            if (!ok && session === current){ notice('Call audio is delayed or rate limited by ntfy.'); await new Promise(resolve => setTimeout(resolve,1000)); }
+          } catch (err){ if (session === current) notice('Could not send call audio: ' + err.message); }
+        }
+      } finally { sending = false; if (queue.length && phase === 'connected' && !muted) pump(); }
+    }
+    async function receiveAudio(payload, current){
+      try {
+        const bytes = payload.e ? await decrypt(current.key,payload.d) : fromB64(payload.d);
+        if (session !== current || phase !== 'connected' || !bytes.length) return;
+        lastPeer = Date.now();
+        const seq = Number(payload.seq) || 0;
+        if (!seq){ play(bytes); return; }
+        if (rxSeq === null) rxSeq = seq;
+        if (seq < rxSeq) return;
+        rxQueue.set(seq,bytes); drain();
+        if (rxQueue.size && !rxTimer) rxTimer = setTimeout(skipGap,320);
+      } catch (_) { notice('Could not decode incoming audio.'); }
+    }
+    function drain(){ while (rxQueue.has(rxSeq)){ const bytes = rxQueue.get(rxSeq); rxQueue.delete(rxSeq++); play(bytes); } }
+    function skipGap(){ rxTimer = null; if (!rxQueue.size || phase !== 'connected') return; rxSeq = Math.min(...rxQueue.keys()); drain(); if (rxQueue.size) rxTimer = setTimeout(skipGap,320); }
+    function play(bytes){
+      const ctx = context(); if (!output){ output = ctx.createGain(); output.gain.value = speakerMuted ? 0 : 1; output.connect(ctx.destination); }
+      const buffer = ctx.createBuffer(1,bytes.length,RATE), channel = buffer.getChannelData(0), fade = Math.min(48,Math.floor(bytes.length/2));
+      for (let i=0;i<bytes.length;i++){ let gain = 1; if (i < fade) gain = i/fade; else if (i >= bytes.length-fade) gain = (bytes.length-1-i)/fade; channel[i] = decode(bytes[i])*gain; }
+      const node = ctx.createBufferSource(); node.buffer = buffer; node.connect(output);
+      if (playHead < ctx.currentTime + .02) playHead = ctx.currentTime + .12;
+      if (playHead > ctx.currentTime + 1.4) playHead = ctx.currentTime + .2;
+      node.start(playHead); playHead += buffer.duration;
+    }
+    $('roomCode').addEventListener('input', event => { event.target.value = event.target.value.replace(/\D/g,'').slice(0,11); });
+    $('roomCode').addEventListener('keydown', event => { if (event.key === 'Enter') join(); });
+    $('generateBtn').addEventListener('click', () => { $('roomCode').value = randomCode(); notice('Share this code with the person you want to call.'); });
+    $('joinBtn').addEventListener('click', join);
+    $('callBtn').addEventListener('click', startCall);
+    $('acceptBtn').addEventListener('click', answerCall);
+    $('endBtn').addEventListener('click', () => { endCall(true); notice('Call ended.'); });
+    $('muteBtn').addEventListener('click', () => {
+      if (phase !== 'connected' || listenOnly) return;
+      muted = !muted; if (muted){ pieces = []; pieceBytes = 0; queue = []; }
+      signal({t:'v_mute',cid:session.cid,on:muted ? 1 : 0,nom:0}); render();
+    });
+    $('speakerBtn').addEventListener('click', () => { if (phase !== 'connected') return; speakerMuted = !speakerMuted; if (output) output.gain.value = speakerMuted ? 0 : 1; render(); });
+    $('ringToggle').addEventListener('change', () => { try { localStorage.setItem('ntfy_ring', $('ringToggle').checked ? '1' : '0'); } catch (_) {} if (!$('ringToggle').checked) stopRing(); else if (phase === 'incoming' || phase === 'outgoing') startRing(); });
+    window.addEventListener('beforeunload', () => { if (source) source.close(); if (mic) mic.getTracks().forEach(track => track.stop()); });
+    const code = new URLSearchParams(location.search).get('code');
+    if (code && /^\d{11}$/.test(code)) $('roomCode').value = code;
+    render();
+  })();
+  </script>
+</body>
+</html>
