@@ -23,6 +23,7 @@
     button{border:0;border-radius:12px;font-weight:700;transition:background .15s,transform .15s}button:not(:disabled):active{transform:scale(.98)}
     .secondary{padding:12px 15px;background:#2c3b50;color:#ecf3ff;white-space:nowrap}.secondary:hover:not(:disabled){background:#3a4b63}
     .hint{font-size:12px;margin:10px 0 0}.status{display:flex;align-items:center;gap:8px;color:#a7b7c9;font-size:13px;margin:20px 0 0;min-height:20px}.dot{width:8px;height:8px;flex:none;border-radius:50%;background:#778698}.dot.online{background:#57d28c}.dot.error{background:#ff8a85}
+    .qr-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}.qr-actions button{font-size:13px}.qr-panel{text-align:center;margin-top:14px;padding:16px;border:1px solid #39475b;border-radius:14px;background:#0f1723}.qr-panel canvas{width:min(100%,220px);height:auto;background:white;image-rendering:pixelated}.qr-panel video{display:block;width:100%;max-height:260px;object-fit:cover;border-radius:10px;background:#000}.qr-panel p{color:#a7b7c9;font-size:12px;line-height:1.5}.qr-panel button{font-size:13px}
     .call-panel{margin-top:26px;padding-top:24px;border-top:1px solid #ffffff12;text-align:center}
     .avatar{width:92px;height:92px;border-radius:50%;display:grid;place-items:center;margin:0 auto 16px;background:linear-gradient(135deg,#4169a9,#233b5d);box-shadow:0 0 0 9px #ffffff08;color:#edf5ff}
     .avatar svg{width:34px;height:34px}.call-title{margin:0;font-size:19px;font-weight:700}.call-state{min-height:22px;margin:6px 0 0;color:#a7b7c9;font-size:14px}.timer{font-variant-numeric:tabular-nums;color:#83c1ff;font-size:14px;margin:7px 0 0;min-height:20px}
@@ -44,6 +45,21 @@
       <button class="secondary" id="joinBtn" type="button">Join</button>
     </div>
     <p class="hint">Both people must join the same code. <button id="generateBtn" type="button" style="padding:0;background:none;color:#8cbcff;font-size:inherit">Generate a code</button></p>
+    <div class="qr-actions">
+      <button class="secondary" id="showQrBtn" type="button">Show QR code</button>
+      <button class="secondary" id="scanQrBtn" type="button">Scan QR code</button>
+    </div>
+    <div class="qr-panel hidden" id="qrSharePanel">
+      <canvas id="qrCanvas" role="img" aria-label="QR code for the call code"></canvas>
+      <p>Scan to fill in this call code. Only share it with someone you trust.</p>
+      <button class="secondary" id="closeQrBtn" type="button">Close</button>
+    </div>
+    <div class="qr-panel hidden" id="qrScanPanel">
+      <video id="qrVideo" autoplay playsinline muted aria-label="Camera preview for QR scanning"></video>
+      <canvas id="scanCanvas" hidden></canvas>
+      <p>Point your camera at a call code QR.</p>
+      <button class="secondary" id="stopScanBtn" type="button">Cancel scan</button>
+    </div>
     <div class="status" role="status"><span class="dot" id="connectionDot"></span><span id="connectionText">Join a code to get started</span></div>
 
     <section class="call-panel" aria-label="Voice call">
@@ -66,6 +82,8 @@
     <p class="privacy">Calls use ntfy.sh. Anyone with the code can listen; use a code only with people you trust. ntfy rate limits can interrupt calls.</p>
   </main>
   <audio id="ringtone" src="ringtone.mp3" loop preload="auto"></audio>
+  <script src="qr-lib/qrcode.js"></script>
+  <script src="qr-lib/jsQR.js"></script>
   <script>
   (() => {
     'use strict';
@@ -73,6 +91,7 @@
     const RATE = 8000, FRAME = 160, PACKET = 1920, QUEUE_MAX = 6;
     const clientId = 'call-' + (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2));
     let room = '', source = null, online = false, phase = 'idle', session = null;
+    let scanStream = null, scanTimer = null, scanGeneration = 0;
     let audio = null, mic = null, capture = null, processor = null, sink = null, output = null;
     let muted = false, speakerMuted = false, listenOnly = false, peerMuted = false;
     let pieces = [], pieceBytes = 0, queue = [], sending = false, txSeq = 0;
@@ -93,6 +112,9 @@
       $('roomCode').disabled = active;
       $('joinBtn').disabled = active;
       $('generateBtn').disabled = active;
+      $('showQrBtn').disabled = active;
+      $('scanQrBtn').disabled = active;
+      if (active){ stopScan(); $('qrSharePanel').classList.add('hidden'); }
       $('callBtn').classList.toggle('hidden', active);
       $('callBtn').disabled = !online || active;
       $('acceptBtn').classList.toggle('hidden', phase !== 'incoming');
@@ -130,11 +152,94 @@
         return false;
       } finally { clearTimeout(timeout); }
     }
+    function stopScan(){
+      scanGeneration++;
+      clearTimeout(scanTimer); scanTimer = null;
+      if (scanStream){ scanStream.getTracks().forEach(track => track.stop()); scanStream = null; }
+      $('qrVideo').srcObject = null;
+      $('qrScanPanel').classList.add('hidden');
+    }
+    function showQr(){
+      if (phase !== 'idle') return;
+      const code = $('roomCode').value;
+      if (!/^\d{11}$/.test(code)){ notice('Enter or generate an 11-digit code first.'); return; }
+      if (typeof qrcode !== 'function'){ notice('QR generator could not load.'); return; }
+      try {
+        stopScan();
+        const qr = qrcode(0, 'M');
+        qr.addData(code, 'Numeric'); qr.make();
+        const count = qr.getModuleCount(), scale = 8, quiet = 4;
+        const canvas = $('qrCanvas'), ctx = canvas.getContext('2d');
+        canvas.width = canvas.height = (count + quiet * 2) * scale;
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#000';
+        for (let y = 0; y < count; y++) for (let x = 0; x < count; x++){
+          if (qr.isDark(y, x)) ctx.fillRect((x + quiet) * scale, (y + quiet) * scale, scale, scale);
+        }
+        $('qrSharePanel').classList.remove('hidden');
+        notice('');
+      } catch (err){ notice('Could not generate QR code: ' + err.message); }
+    }
+    function scannedCode(value){
+      const text = String(value || '').trim();
+      if (/^\d{11}$/.test(text)) return text;
+      try {
+        const link = new URL(text);
+        const code = link.searchParams.get('code');
+        if ((link.protocol === 'https:' || link.protocol === 'http:') && /^\d{11}$/.test(code || '')) return code;
+      } catch (_) {}
+      return null;
+    }
+    async function startScan(){
+      if (phase !== 'idle') return;
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ notice('Camera access requires HTTPS or localhost and a supported browser.'); return; }
+      if (typeof jsQR !== 'function'){ notice('QR scanner could not load.'); return; }
+      stopScan();
+      const generation = scanGeneration;
+      $('qrSharePanel').classList.add('hidden');
+      $('qrScanPanel').classList.remove('hidden');
+      notice('Allow camera access to scan a call code.');
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
+        if (generation !== scanGeneration || phase !== 'idle'){ stream.getTracks().forEach(track => track.stop()); return; }
+        scanStream = stream;
+        const video = $('qrVideo'); video.srcObject = stream;
+        await video.play();
+        if (generation !== scanGeneration) return;
+        notice('');
+        const canvas = $('scanCanvas'), ctx = canvas.getContext('2d', {willReadFrequently:true});
+        const scanFrame = () => {
+          if (generation !== scanGeneration || !scanStream) return;
+          try {
+            if (video.readyState >= 2 && video.videoWidth && video.videoHeight){
+              const scale = Math.min(1, 640 / video.videoWidth);
+              canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+              canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+              ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+              const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              const result = jsQR(pixels.data, pixels.width, pixels.height, {inversionAttempts:'attemptBoth'});
+              if (result){
+                const code = scannedCode(result.data);
+                if (code){ $('roomCode').value = code; stopScan(); notice('Call code scanned. Tap Join to connect.'); return; }
+                notice('That QR code does not contain a valid call code.');
+              }
+            }
+            scanTimer = setTimeout(scanFrame, 150);
+          } catch (err){ stopScan(); notice('Could not scan QR code: ' + err.message); }
+        };
+        scanFrame();
+      } catch (err){
+        if (generation !== scanGeneration) return;
+        stopScan();
+        notice(err.name === 'NotAllowedError' ? 'Camera permission denied. Allow camera access to scan.' : 'Could not open the camera: ' + err.message);
+      }
+    }
     function join(){
       if (phase !== 'idle') return;
       const code = $('roomCode').value.replace(/\D/g, '');
       if (!/^\d{11}$/.test(code)){ notice('Enter an 11-digit call code.'); return; }
       if (!/^https?:$/.test(location.protocol)){ notice('Open this app on HTTPS or localhost to use calls.'); return; }
+      stopScan();
       if (source) source.close();
       room = code; online = false; notice('');
       updateConnection('Connecting to ' + room + '…');
@@ -335,9 +440,13 @@
       if (playHead > ctx.currentTime + 1.4) playHead = ctx.currentTime + .2;
       node.start(playHead); playHead += buffer.duration;
     }
-    $('roomCode').addEventListener('input', event => { event.target.value = event.target.value.replace(/\D/g,'').slice(0,11); });
+    $('roomCode').addEventListener('input', event => { event.target.value = event.target.value.replace(/\D/g,'').slice(0,11); $('qrSharePanel').classList.add('hidden'); });
     $('roomCode').addEventListener('keydown', event => { if (event.key === 'Enter') join(); });
-    $('generateBtn').addEventListener('click', () => { $('roomCode').value = randomCode(); notice('Share this code with the person you want to call.'); });
+    $('generateBtn').addEventListener('click', () => { $('roomCode').value = randomCode(); $('qrSharePanel').classList.add('hidden'); notice('Share this code with the person you want to call.'); });
+    $('showQrBtn').addEventListener('click', showQr);
+    $('closeQrBtn').addEventListener('click', () => $('qrSharePanel').classList.add('hidden'));
+    $('scanQrBtn').addEventListener('click', startScan);
+    $('stopScanBtn').addEventListener('click', stopScan);
     $('joinBtn').addEventListener('click', join);
     $('callBtn').addEventListener('click', startCall);
     $('acceptBtn').addEventListener('click', answerCall);
@@ -349,7 +458,7 @@
     });
     $('speakerBtn').addEventListener('click', () => { if (phase !== 'connected') return; speakerMuted = !speakerMuted; if (output) output.gain.value = speakerMuted ? 0 : 1; render(); });
     $('ringToggle').addEventListener('change', () => { try { localStorage.setItem('ntfy_ring', $('ringToggle').checked ? '1' : '0'); } catch (_) {} if (!$('ringToggle').checked) stopRing(); else if (phase === 'incoming' || phase === 'outgoing') startRing(); });
-    window.addEventListener('beforeunload', () => { if (source) source.close(); if (mic) mic.getTracks().forEach(track => track.stop()); });
+    window.addEventListener('beforeunload', () => { stopScan(); if (source) source.close(); if (mic) mic.getTracks().forEach(track => track.stop()); });
     const code = new URLSearchParams(location.search).get('code');
     if (code && /^\d{11}$/.test(code)) $('roomCode').value = code;
     render();
