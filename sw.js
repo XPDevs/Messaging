@@ -1,4 +1,4 @@
-const CACHE = 'ntfy-chat-v3';
+const CACHE = 'ntfy-chat-v4';
 const SHELL = ['./', './index.html', './favicon.ico', './manifest.json', './ringtone.mp3', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', event => {

@@ -4,6 +4,8 @@ ntfy Chat is a complete messaging app built on ntfy topics. It runs as a single 
 
 The default transport is the public ntfy.sh server. The server can be changed in Settings, Advanced, URL. The app checks the ntfy health endpoint before saving a new address and then resubscribes every conversation on the new server.
 
+The app opens a WebSocket connection first. If a network blocks that, it falls back to server sent events, then to HTTP polling. This keeps messages arriving on restrictive networks and avoids the cross origin error browsers show when an event stream is blocked. Messages and links that point to a local file URL are ignored, so old device paths cannot break the page.
+
 ## Run the app
 
 Open the folder with any static web server. For example, run npx serve . in the project folder and open the address it prints. Do not open index.html as a file URL, because encryption and the service worker need a secure context. HTTPS is required for camera, microphone, notifications and encryption in most browsers. Localhost is treated as secure.

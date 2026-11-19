@@ -888,9 +888,9 @@
     <div class="call-data-strip" id="callDataStrip">
       <span class="cds-dot idle" id="callDataDot"></span>
       <span><b id="callSentStat">0 B</b> sent</span>
-      <span class="cds-sep">·</span>
+      <span class="cds-sep">,</span>
       <span><b id="callRecvStat">0 B</b> received</span>
-      <span class="cds-sep">·</span>
+      <span class="cds-sep">,</span>
       <span id="callPacketStat">0 packets</span>
       <button class="call-data-toggle" id="callDataToggle" type="button">Details</button>
     </div>
@@ -1011,10 +1011,6 @@
         </button>
         <button class="icon-btn" id="copyCodeBtn" title="Copy code" aria-label="Copy code">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
-        </button>
-        <button class="help-icon" id="helpBtn" title="How it works" aria-label="How it works">?</button>
-        <button class="round-btn" id="settingsBtn" title="Settings" aria-label="Settings">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 8.9 19a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 5 8.9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9.4a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8v.1a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
         </button>
       </div>
     </header>
@@ -1260,22 +1256,6 @@
   </div>
 </div>
 
-<!-- Help -->
-<div class="help-overlay" id="helpOverlay">
-  <div class="help-overlay-content">
-    <h3>How it works</h3>
-    <p>Your eleven digit number identifies your ntfy topic. Share it only with people you trust.</p>
-    <p><b>Rich messages</b>, photos, voice notes, files and location. Everything is delivered through ntfy.</p>
-    <p><b>Vault Lock</b>, encrypt text or a photo on your device with a passcode.</p>
-    <p><b>Voice calls</b> run entirely over ntfy: the audio is compressed to 8 kHz µ-law, packed into normal ntfy messages and rebuilt on the other side. No WebRTC, no STUN/TURN, no media server. Settings has a <b>Call ringtone</b> switch to call silently.</p>
-    <p><b>Encrypted by default.</b> Each device publishes an ECDH public key on the topic; both sides derive the same AES-GCM key and everything you send in a one to one chat (text, photos, voice notes, location, call audio) is sealed with it. Compare the safety number in Settings once and you know there is nobody in the middle.</p>
-    <p><b>Catch up and backup.</b> On reconnect the app asks ntfy for what it missed instead of only listening for new messages, keeps history in IndexedDB, and can export or import a JSON backup.</p>
-    <p><b>No microphone?</b> Calls still work. Start or answer one and the app offers a <b>listen only</b> call: you hear the other side, they cannot hear you, and both screens say so.</p>
-    <p><b>Big files</b> are split into chunks automatically, so an upload that would trip ntfy's size limit (HTTP 413) carries on in pieces and is stitched back together on the other side.</p>
-    <button class="help-overlay-close" id="helpClose">Got it</button>
-  </div>
-</div>
-
 <!-- Lightbox -->
 <div class="lightbox" id="lightbox">
   <img id="lightboxImg" alt="image">
@@ -1372,7 +1352,7 @@
   function newId(){ return 'm_' + Math.random().toString(36).slice(2) + Date.now(); }
   function activeChat(){ return state.chats.find(c => c.code === state.activeCode) || state.chats[0]; }
   function avatarText(s){ const t = (s || '?').trim(); return /^\d+$/.test(t) ? t.slice(-2) : t.slice(0,2).toUpperCase(); }
-  function safeUrl(u){ const s = String(u == null ? '' : u); return /^file:/i.test(s) ? '' : s; }
+  function safeUrl(u){ const s = String(u == null ? '' : u).trim(); return /^(file|javascript|vbscript):/i.test(s) ? '' : s; }
   function escapeHtml(s){ return (s + '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function formatTime(ts){ return new Date(ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
   function formatDate(ts){
@@ -1774,8 +1754,11 @@
       meta.appendChild(el('div', 'file-sub', (humanSize(m.size) || 'Tap to open')));
       chip.appendChild(meta);
       bubble.appendChild(chip);
-      if (m.attachUrl) bubble.style.cursor = 'pointer';
-      bubble.addEventListener('click', () => { if (m.attachUrl) downloadUrl(m.attachUrl, m.fileName || 'file'); });
+      const fileSrc = safeUrl(m.attachUrl);
+      if (fileSrc){
+        bubble.style.cursor = 'pointer';
+        bubble.addEventListener('click', () => downloadUrl(fileSrc, m.fileName || 'file'));
+      }
     } else if (m.kind === 'location'){
       const card = el('div', 'loc-card');
       const head = el('div', 'file-chip');
@@ -1815,8 +1798,7 @@
     }
 
     const meta = el('div', 'message-meta');
-    meta.appendChild(el('span', null, m.sender || (m.mine ? 'You' : 'Remote')));
-    meta.appendChild(el('span', null, '·'));
+    meta.appendChild(el('span', null, (m.sender || (m.mine ? 'You' : 'Remote')) + ','));
     meta.appendChild(el('span', null, formatTime(m.time)));
     if (m.edited) meta.appendChild(el('span', null, '(edited)'));
     if (m.starred) meta.appendChild(el('span', 'lock-badge', 'STAR'));
@@ -1929,16 +1911,21 @@
   }
 
   function openLightbox(src, name){
-    $('lightboxImg').src = safeUrl(src);
+    const safe = safeUrl(src);
+    if (!safe){ toast('This image is no longer available'); return; }
+    $('lightboxImg').src = safe;
     $('lightboxDownload').dataset.name = name || 'image';
+    $('lightboxDownload').dataset.src = safe;
     $('lightbox').classList.add('show');
   }
   async function downloadLightbox(){
-    const src = $('lightboxImg').src;
+    const src = $('lightboxDownload').dataset.src || $('lightboxImg').src;
     const name = $('lightboxDownload').dataset.name || 'image';
     downloadUrl(src, name);
   }
   async function downloadUrl(src, name){
+    src = safeUrl(src);
+    if (!src){ toast('This file is no longer available'); return; }
     try {
       const blob = src.startsWith('data:') ? dataURLtoBlob(src) : await (await fetch(src)).blob();
       const url = URL.createObjectURL(blob);
@@ -2482,7 +2469,7 @@
     if (!e2eSupported()){ icon = 'N/A'; tip = 'Encryption unavailable on this page'; }
     else if (chat && chat.group){ icon = 'GROUP'; tip = 'Group topic'; }
     else if (chat && chat.peerPub){ icon = 'E2E'; tip = 'End to end encrypted'; }
-    else if (chat){ icon = 'WAIT'; tip = 'Waiting for the other device key'; }
+    else if (chat){ icon = 'KEY'; tip = 'Waiting for the other device key'; }
     badge.textContent = icon;
     badge.title = tip;
   }
@@ -2531,6 +2518,32 @@
       return '?since=' + (since > 0 ? since : '24h');
     };
 
+    let sseTried = false;
+    let pollTimer = null;
+    let pollSince = null;
+
+    const scheduleRetry = () => {
+      if (conn.closedByUser) return;
+      if (conn.retryTimer) clearTimeout(conn.retryTimer);
+      conn.retryCount++;
+      const delay = Math.min(30000, 1000 * Math.pow(2, Math.min(conn.retryCount, 5)));
+      conn.retryTimer = setTimeout(() => {
+        if (conn.closedByUser) return;
+        if (conn.es && conn.es.readyState === EventSource.OPEN) return;
+        if (conn.ws && conn.ws.readyState === WebSocket.OPEN) return;
+        if (conn.retryCount >= 3) { startPoll(); return; }
+        startWS();
+      }, delay);
+    };
+
+    const useSseFallback = () => {
+      if (sseTried || conn.closedByUser) return false;
+      sseTried = true;
+      if (conn.ws) { try { conn.ws.onclose = null; conn.ws.close(); } catch(_) {} conn.ws = null; }
+      startSSE();
+      return true;
+    };
+
     const startWS = () => {
       if (conn.closedByUser) return;
       setState({ connecting: true, connected: false, error: false });
@@ -2556,10 +2569,12 @@
         ws.onclose = () => {
           if (conn.ws !== ws) return;
           setState({ connected: false, connecting: false, error: true });
+          if (useSseFallback()) return;
           scheduleRetry();
         };
       } catch(_) {
         setState({ error: true, connected: false, connecting: false });
+        if (useSseFallback()) return;
         scheduleRetry();
       }
     };
@@ -2568,7 +2583,8 @@
       if (conn.closedByUser) return;
       setState({ connecting: true, connected: false, error: false });
       try {
-        // Note: withCredentials must remain false to avoid CORS issues.
+        // WebSocket is preferred because it avoids EventSource CORS noise.
+        // withCredentials stays false for servers that do not allow credentials.
         const es = new EventSource(ntfySseUrl(code) + catchUpParam(), { withCredentials: false });
         conn.es = es;
         es.onopen = () => {
@@ -2585,39 +2601,53 @@
         };
         es.onerror = () => {
           if (conn.es !== es) return;
-          // EventSource often fires onerror on temporary network hiccups; it also
-          // automatically reconnects. We'll mark the error but let it retry.
+          setState({ error: true, connected: false, connecting: false });
           if (es.readyState === EventSource.CLOSED) {
-            setState({ error: true, connected: false, connecting: false });
+            try { es.close(); } catch(_){}
+            conn.es = null;
             scheduleRetry();
-          } else {
-            setState({ error: true, connected: false, connecting: false });
           }
         };
       } catch(_) {
-        // If EventSource throws, fall back to WebSocket immediately.
         setState({ error: true, connected: false, connecting: false });
-        startWS();
+        scheduleRetry();
       }
     };
 
-    const scheduleRetry = () => {
-      if (conn.closedByUser) return;
-      if (conn.retryTimer) clearTimeout(conn.retryTimer);
-      conn.retryCount++;
-      const delay = Math.min(30000, 1000 * Math.pow(2, Math.min(conn.retryCount, 5)));
-      conn.retryTimer = setTimeout(() => {
+    const startPoll = () => {
+      if (conn.closedByUser || conn.polling) return;
+      conn.polling = true;
+      setState({ connected: false, connecting: true, error: false });
+      let delay = 15000;
+      const poll = async () => {
         if (conn.closedByUser) return;
-        // If EventSource is still not connected, try WebSocket.
-        if (conn.es && conn.es.readyState === EventSource.OPEN) return;
-        if (conn.ws && conn.ws.readyState === WebSocket.OPEN) return;
-        startWS();
-      }, delay);
+        try {
+          const chat = state.chats.find(c => c.code === code);
+          const since = pollSince || (chat && Number(chat.since)) || '24h';
+          const res = await fetch(ntfyBase() + '/' + encodeURIComponent(code) + '/json?since=' + since + '&poll=1', { cache: 'no-store' });
+          if (!res.ok) throw new Error('poll ' + res.status);
+          const text = await res.text();
+          text.split('\n').filter(Boolean).forEach(line => {
+            try {
+              const data = JSON.parse(line);
+              if (data.event === 'message') onMessage(data);
+            } catch(_){}
+          });
+          pollSince = '30s';
+          delay = 15000;
+          setState({ connected: true, connecting: false, error: false });
+        } catch(_) {
+          pollSince = '10m';
+          delay = Math.min(120000, delay * 2);
+          setState({ connected: false, connecting: false, error: true });
+        }
+        if (!conn.closedByUser) conn.pollTimer = setTimeout(poll, delay);
+      };
+      poll();
     };
 
-    // Prefer SSE first (it's the standard ntfy approach), but fall back to WS
-    // if the browser environment blocks it.
-    startSSE();
+    // Try WebSocket first. If the network blocks it, fall back to SSE once.
+    startWS();
 
     // Swap encryption keys shortly after connecting (and whenever the other
     // side is still unknown), so new chats become encrypted on their own.
@@ -2632,6 +2662,7 @@
     conn.close = () => {
       conn.closedByUser = true;
       if (conn.retryTimer) clearTimeout(conn.retryTimer);
+      if (conn.pollTimer) clearTimeout(conn.pollTimer);
       if (conn.es){ try { conn.es.close(); } catch(_){} }
       if (conn.ws){ try { conn.ws.close(); } catch(_){} }
     };
@@ -2809,8 +2840,10 @@
 
   async function cacheMedia(chat, m){
     if (m.cached || !m.attachUrl) return;
+    const src = safeUrl(m.attachUrl);
+    if (!src) return;
     try {
-      const resp = await fetch(m.attachUrl);
+      const resp = await fetch(src);
       if (!resp.ok) return;
       const blob = await resp.blob();
       if (m.kind === 'image'){
@@ -4695,10 +4728,10 @@
   if (callDataToggleBtn) callDataToggleBtn.addEventListener('click', () => $('callDataDetails').classList.toggle('show'));
 
   // Header & Modals
-  $('settingsBtn').addEventListener('click', () => { updateEncStatus(); openModal('settingsModal'); });
-  $('settingsClose').addEventListener('click', () => closeModal('settingsModal'));
-  $('helpBtn').addEventListener('click', () => $('helpOverlay').classList.add('show'));
-  $('helpClose').addEventListener('click', () => $('helpOverlay').classList.remove('show'));
+  const legacySettingsBtn = $('settingsBtn');
+  if (legacySettingsBtn) legacySettingsBtn.addEventListener('click', () => { updateEncStatus(); openModal('settingsModal'); });
+  const legacySettingsClose = $('settingsClose');
+  if (legacySettingsClose) legacySettingsClose.addEventListener('click', () => closeModal('settingsModal'));
   $('copyCodeBtn').addEventListener('click', () => { const c = activeChat(); if (c) copyText(c.code, 'Code ' + c.code + ' copied'); });
   $('qrBtn').addEventListener('click', () => openQr());
 
@@ -5352,6 +5385,13 @@ const CSS = `
 .xa-rail-btn{position:relative;width:48px;height:46px;border:0;border-radius:12px;background:transparent;color:var(--text);display:flex;align-items:center;justify-content:center;opacity:.72;transition:background .15s,opacity .15s;flex-shrink:0}
 .xa-rail-btn:hover{background:var(--active-item);opacity:1}
 .xa-rail-btn.on{background:rgba(var(--primary-rgb),.16);color:var(--primary);opacity:1}
+  #settingsBtn, #helpBtn, #qrBtn, #settingsModal, #helpOverlay, #callScreen, #expGridActions { display:none !important; }
+.sidebar-footer{display:grid !important;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px !important;padding:10px !important}
+.sidebar-footer .new-item-btn{font-size:11px !important;padding:9px 4px !important;white-space:nowrap !important;justify-content:center !important;min-width:0 !important}
+@media(max-width:600px){
+  .xa-settings-nav{flex-wrap:wrap;overflow:visible}
+  .xa-settings-nav button{font-size:12px;padding:8px 10px}
+}
 .xa-rail-btn i{display:none;font-style:normal}
 .xa-rail-btn span.xa-tip{position:absolute;left:56px;top:50%;transform:translateY(-50%);background:var(--modal-bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:5px 9px;font-size:12px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s;box-shadow:0 6px 18px rgba(0,0,0,.25);z-index:2}
 .xa-rail-btn:hover span.xa-tip{opacity:1}
@@ -5528,7 +5568,7 @@ body.xa-has-rail .join-screen{padding-left:var(--xa-rail)}
   .content-header-actions{gap:2px;flex-shrink:0}
   .content-header-actions .icon-btn, .content-header-actions .round-btn{width:34px;height:34px}
   .header-code{display:none !important}
-  .content-title{font-size:16px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .content-title{font-size:16px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   body.xa-has-rail .app-container{padding-left:0;padding-bottom:calc(58px + env(safe-area-inset-bottom))}
   body.xa-has-rail .join-screen{padding-left:0;padding-bottom:70px}
   .xa-page{inset:0 0 calc(58px + env(safe-area-inset-bottom)) 0}
@@ -5727,7 +5767,7 @@ function settingsProfile(box) {
   const c = card('Profile', 'This is what contacts see when they open your profile.');
   const head = mk('div', 'xa-row');
   const av = mk('div', 'xa-avatar lg brand');
-  if (S.avatar) { const img = mk('img'); img.src = S.avatar; img.alt = 'Your profile photo'; av.appendChild(img); }
+  if (S.avatar) { const img = mk('img'); img.src = safeUrl(S.avatar); img.alt = 'Your profile photo'; av.appendChild(img); }
   else av.textContent = avatarText(state.name);
   head.appendChild(av);
   const controls = mk('div', 'xa-toolbar');
@@ -6099,7 +6139,7 @@ function settingsStickers(box) {
   const grid = mk('div', 'xa-chips');
   S.customStickers.forEach((s, idx) => {
     const img = mk('img');
-    img.src = s; img.alt = 'Custom sticker'; img.style.cssText = 'width:38px;height:38px;object-fit:contain;border-radius:8px;background:var(--input-bg)';
+    img.src = safeUrl(s); img.alt = 'Custom sticker'; img.style.cssText = 'width:38px;height:38px;object-fit:contain;border-radius:8px;background:var(--input-bg)';
     const b = mk('button', 'xa-chip');
     b.type = 'button'; b.style.padding = '4px'; b.appendChild(img);
     b.title = 'Send this sticker';
@@ -6375,11 +6415,17 @@ function syncRail() {
   if (dot) dot.classList.toggle('off', !navigator.onLine);
 }
 /* ---------- small utilities ---------- */
+  function safeCssImage(v) {
+  const s = String(v || '').trim();
+  if (!s || /(?:file|javascript|vbscript):/i.test(s)) return '';
+  return s;
+}
 function applyWallpaper() {
   const box = $('contentBox');
   if (!box) return;
-  if (S.wallpaper) {
-    box.style.backgroundImage = S.wallpaper;
+  const wall = safeCssImage(S.wallpaper);
+  if (wall) {
+    box.style.backgroundImage = wall;
     box.style.backgroundSize = 'cover';
     box.style.backgroundAttachment = 'fixed';
   } else {
@@ -6596,8 +6642,8 @@ function wrapComposer(marker) {
 }
 function linkPreviewCard(p) {
   const a = mk('a', 'xa-preview');
-  a.href = p.url || '#'; a.target = '_blank'; a.rel = 'noopener noreferrer';
-  if (p.image) { const img = mk('img'); img.src = p.image; img.alt = ''; img.loading = 'lazy'; a.appendChild(img); }
+  a.href = safeUrl(p.url) || '#'; a.target = '_blank'; a.rel = 'noopener noreferrer';
+  if (p.image) { const img = mk('img'); img.src = safeUrl(p.image); img.alt = ''; img.loading = 'lazy'; a.appendChild(img); }
   const m = mk('div', 'xa-preview-main');
   m.appendChild(mk('em', null, p.site || 'Link'));
   m.appendChild(mk('b', null, p.title || p.url || 'Link'));
@@ -6696,7 +6742,7 @@ function stickerBubble(m) {
   const wrap = mk('div');
   if (m.stickerImage) {
     const img = mk('img', 'xa-sticker-img');
-    img.src = m.stickerImage; img.alt = 'Sticker';
+    img.src = safeUrl(m.stickerImage); img.alt = 'Sticker';
     wrap.appendChild(img);
   } else {
     wrap.appendChild(mk('div', 'xa-sticker-big', m.text || ''));
@@ -6763,7 +6809,7 @@ function chatListRow(c) {
   const li = mk('li', 'list-item' + (c.code === state.activeCode ? ' active' : ''));
   li.dataset.code = c.code;
   const avatar = mk('div', 'item-avatar');
-  if (c.photo) { const img = mk('img'); img.src = c.photo; img.alt = ''; img.style.cssText = 'width:100%;height:100%;border-radius:50%;object-fit:cover'; avatar.appendChild(img); }
+  if (c.photo) { const img = mk('img'); img.src = safeUrl(c.photo); img.alt = ''; img.style.cssText = 'width:100%;height:100%;border-radius:50%;object-fit:cover'; avatar.appendChild(img); }
   else avatar.textContent = avatarText(c.title || c.code);
   if (c.own) avatar.appendChild(mk('span', 'online-dot'));
   const main = mk('div', 'item-main');
@@ -6897,7 +6943,7 @@ function openChatInfo(chat, tab) {
     const head = card();
     const top = mk('div', 'xa-row');
     const av = mk('div', 'xa-avatar lg brand');
-    if (chat.photo) { const img = mk('img'); img.src = chat.photo; img.alt = ''; av.appendChild(img); }
+    if (chat.photo) { const img = mk('img'); img.src = safeUrl(chat.photo); img.alt = ''; av.appendChild(img); }
     else av.textContent = avatarText(chat.title || chat.code);
     top.appendChild(av);
     const hm = mk('div', 'xa-row-main');
@@ -7018,7 +7064,8 @@ function applyChatWallpaper(chat) {
   const sc = chatSettings(chat);
   const box = $('contentBox');
   if (!box) return;
-  if (sc.wallpaper) { box.style.backgroundImage = sc.wallpaper; box.style.backgroundSize = 'cover'; }
+  const wall = safeCssImage(sc.wallpaper);
+  if (wall) { box.style.backgroundImage = wall; box.style.backgroundSize = 'cover'; }
   else applyWallpaper();
 }
 function setChatTtl(chat, ms) {
@@ -7647,9 +7694,7 @@ function buildHeaderExtras() {
   video.id = 'xaVideoBtn';
   const info = iconBtn('Chat info', 'info', () => openChatInfo(curChat()));
   info.id = 'xaInfoBtn';
-  const select = iconBtn('Select messages', 'select', () => beginSelection(null));
-  select.id = 'xaSelectBtn';
-  actions.append(search, video, info, select);
+  actions.append(search, video, info);
 
   const header = Q('.content-header');
   const bar = mk('div', 'xa-inchat-search');
@@ -7689,7 +7734,7 @@ function openStatusPage() {
     const head = card('My status', 'Text, photo, video, GIF or voice. Status updates expire after 24 hours.');
     const top = mk('div', 'xa-row');
     const av = mk('div', 'xa-avatar lg brand');
-    if (S.avatar) { const img = mk('img'); img.src = S.avatar; av.appendChild(img); }
+    if (S.avatar) { const img = mk('img'); img.src = safeUrl(S.avatar); av.appendChild(img); }
     else av.textContent = avatarText(state.name);
     top.appendChild(av);
     const m = mk('div', 'xa-row-main');
@@ -7732,10 +7777,11 @@ function openStatusPage() {
 function statusCard(s) {
   const c = mk('div', 'xa-status-card');
   const media = mk('div', 'xa-status-media');
-  media.style.background = s.type === 'text' ? (s.bg || 'linear-gradient(135deg,#1a73e8,#8e44ad)') : '#222';
-  if (s.type === 'photo' && s.media) media.style.backgroundImage = 'url(' + s.media + ')';
-  if (s.type === 'video' && s.media) {
-    const v = mk('video'); v.src = s.media; v.muted = true; v.playsInline = true;
+  const mediaUrl = safeUrl(s.media);
+  media.style.background = s.type === 'text' ? (safeCssImage(s.bg) || 'linear-gradient(135deg,#1a73e8,#8e44ad)') : '#222';
+  if (s.type === 'photo' && mediaUrl) media.style.backgroundImage = 'url("' + mediaUrl.replace(/"/g, '%22') + '")';
+  if (s.type === 'video' && mediaUrl) {
+    const v = mk('video'); v.src = mediaUrl; v.muted = true; v.playsInline = true;
     v.style.cssText = 'width:100%;height:100%;object-fit:cover';
     media.appendChild(v);
   }
@@ -7894,17 +7940,18 @@ function broadcastStatus(s) {
 function openStatusViewer(s) {
   const sheet = modalSheet((s.mine ? 'Your status' : s.owner) + ' status');
   const mediaBox = mk('div');
-  if (s.type === 'photo' && s.media) {
-    const img = mk('img', 'xa-status-big'); img.src = s.media; img.alt = 'Status';
+  const mediaUrl = safeUrl(s.media);
+  if (s.type === 'photo' && mediaUrl) {
+    const img = mk('img', 'xa-status-big'); img.src = mediaUrl; img.alt = 'Status';
     mediaBox.appendChild(img);
-  } else if (s.type === 'video' && s.media) {
-    const v = mk('video', 'xa-status-big'); v.src = s.media; v.controls = true; v.playsInline = true;
+  } else if (s.type === 'video' && mediaUrl) {
+    const v = mk('video', 'xa-status-big'); v.src = mediaUrl; v.controls = true; v.playsInline = true;
     mediaBox.appendChild(v);
-  } else if (s.type === 'voice' && s.media) {
-    const a = document.createElement('audio'); a.src = s.media; a.controls = true;
+  } else if (s.type === 'voice' && mediaUrl) {
+    const a = document.createElement('audio'); a.src = mediaUrl; a.controls = true;
     mediaBox.appendChild(a);
-  } else if (s.type === 'gif' && s.media) {
-    const img = mk('img', 'xa-status-big'); img.src = s.media; img.alt = 'GIF status';
+  } else if (s.type === 'gif' && mediaUrl) {
+    const img = mk('img', 'xa-status-big'); img.src = mediaUrl; img.alt = 'GIF status';
     mediaBox.appendChild(img);
   } else {
     const t = mk('div', null, s.text || '');
@@ -7995,7 +8042,7 @@ function openCommunitiesPage() {
     S.communities.forEach(c => {
       const r = mk('div', 'xa-item');
       const av = mk('div', 'xa-avatar');
-      if (c.photo) { const img = mk('img'); img.src = c.photo; av.appendChild(img); }
+      if (c.photo) { const img = mk('img'); img.src = safeUrl(c.photo); av.appendChild(img); }
       else av.textContent = avatarText(c.name);
       const m = mk('div', 'xa-item-main');
       m.appendChild(mk('b', null, c.name));
@@ -8055,7 +8102,7 @@ function openCommunity(com) {
     const head = card();
     const top = mk('div', 'xa-row');
     const av = mk('div', 'xa-avatar lg');
-    if (com.photo) { const img = mk('img'); img.src = com.photo; av.appendChild(img); }
+    if (com.photo) { const img = mk('img'); img.src = safeUrl(com.photo); av.appendChild(img); }
     else av.textContent = avatarText(com.name);
     top.appendChild(av);
     const m = mk('div', 'xa-row-main');
@@ -8768,7 +8815,7 @@ function openStickerPicker(packId) {
     grid.innerHTML = '';
     if (active === 'custom') {
       S.customStickers.forEach(s => {
-        const img = mk('img'); img.src = s; img.alt = 'Sticker';
+        const img = mk('img'); img.src = safeUrl(s); img.alt = 'Sticker';
         img.style.cssText = 'width:64px;height:64px;object-fit:contain;border-radius:10px;background:var(--input-bg)';
         const b = mk('button', 'xa-chip'); b.style.padding = '3px'; b.appendChild(img);
         b.addEventListener('click', () => { closeSheet(); sendCustomSticker(s); });
@@ -9587,9 +9634,7 @@ function bindOverrides() {
   document.addEventListener('click', e => {
     const t = e.target.closest('button, a');
     if (!t) return;
-    if (t.id === 'settingsBtn') { e.preventDefault(); e.stopPropagation(); openSettings(); }
-    else if (t.id === 'contactsBtn') { e.preventDefault(); e.stopPropagation(); openContactsPage(); }
-    else if (t.id === 'helpBtn') { e.preventDefault(); e.stopPropagation(); openSettings('about'); }
+    if (t.id === 'contactsBtn') { e.preventDefault(); e.stopPropagation(); openContactsPage(); }
     else if (t.id === 'callBtn') { e.preventDefault(); e.stopPropagation(); startCall('audio'); }
   }, true);
 
