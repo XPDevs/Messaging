@@ -1,14 +1,26 @@
 {
-  "name": "Messaging",
-  "short_name": "Messaging",
-  "description": "Peer to peer messaging application",
+  "name": "ntfy Chat",
+  "short_name": "ntfy Chat",
+  "description": "A complete messaging app built on ntfy topics",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#2563eb",
+  "background_color": "#131314",
+  "theme_color": "#131314",
   "orientation": "portrait",
   "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
     {
       "src": "favicon.ico",
       "sizes": "16x16 32x32 48x48 64x64",
